@@ -18,3 +18,9 @@ source_downloads
 
 # Configuration files for Visual Studio Code
 .vscode/
+
+# cscope file
+cscope.*
+
+# build directory
+inst/

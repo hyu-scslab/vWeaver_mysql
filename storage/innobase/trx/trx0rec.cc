@@ -1165,6 +1165,23 @@ static byte *trx_undo_report_blob_update(page_t *undo_page, dict_index_t *index,
   return undo_ptr;
 }
 
+#ifdef SCSLAB_CVC
+bool rec_is_user_record(
+		const rec_t*						rec,
+		const dict_index_t*			index)
+{
+	const ulint rec_status = rec_get_status(rec);
+
+	if(!strcmp(index->name, "PRIMARY")
+			&& index->space != dict_sys_t::s_space_id
+			&& rec_status == REC_STATUS_ORDINARY) {
+		return true;
+	}
+	return false;
+}
+
+#endif
+
 /**********************************************************************/ /**
  Reports in the undo log of an update or delete marking of a clustered index
  record.
@@ -1323,6 +1340,293 @@ static ulint trx_undo_page_report_modify(
   /* Save to the undo log the old values of the columns to be updated. */
 
   if (update) {
+
+	#ifdef SCSLAB_CVC
+		bool is_user_record = rec_is_user_record(rec, index);
+		ulint j = 0, pos;
+		upd_field_t * fld;
+
+		if(is_user_record) {
+
+			if (trx_undo_left(undo_page, ptr) < 5) {
+			return 0;
+			}
+
+			ulint n_fields = rec_get_n_fields(rec, index);
+			ulint n_updated = upd_get_n_fields(update);
+			fld = upd_get_nth_field(update, j);
+			pos = fld->field_no;
+
+			if (dict_index_is_online_ddl(index) && index->table->n_v_cols > 0) {
+			}
+
+			ptr += mach_write_compressed(ptr, n_fields);
+
+			for (i = 0 ; i < rec_get_n_fields(rec, index); i++) {
+				if (i == pos) {
+					bool is_virtual = upd_fld_is_virtual_col(fld);
+					bool is_multi_val = upd_fld_is_multi_value_col(fld);
+					ulint max_v_log_len = 0;					
+
+					if (trx_undo_left(undo_page, ptr) < 5) {
+						return 0;
+					}
+
+					if (is_virtual) {
+					}
+					
+					ptr += mach_write_compressed(ptr, pos);
+
+					if (is_virtual) {
+					} else {
+						field = rec_get_nth_field_instant(rec, offsets, pos, index, &flen);
+					}
+
+					if (trx_undo_left(undo_page, ptr) < 15) {
+						return 0;
+					}
+
+					if (!is_virtual && rec_offs_nth_extern(offsets, pos)) {
+					} else if (!is_multi_val) {
+						ptr += mach_write_compressed(ptr, flen);
+					}
+
+					if (is_multi_val) {
+					} else if (flen != UNIV_SQL_NULL) {
+						if (trx_undo_left(undo_page, ptr) < flen) {
+							return 0;
+						}
+
+						ut_memcpy(ptr, field, flen);
+						ptr += flen;
+
+						if (!is_virtual && rec_offs_nth_extern(offsets, pos)) {
+						}
+					}
+
+					if (is_virtual) {
+					}
+
+					j++;
+					if (j < upd_get_n_fields(update)) {
+						fld = upd_get_nth_field(update, j);
+						pos = fld->field_no;
+					}
+				} else {
+					bool is_fld_virtual = false;
+					bool is_fld_multi_val = false;
+					ulint max_v_log_len = 0;
+
+					if (trx_undo_left(undo_page, ptr) < 5) {
+						return 0;
+					}
+
+					if(is_fld_virtual) {
+					}
+
+					ptr += mach_write_compressed(ptr, i);
+
+					if(is_fld_virtual) {
+					} else {
+						field = rec_get_nth_field_instant(rec, offsets, i, index, &flen);
+					}
+
+					if (trx_undo_left(undo_page, ptr) < 15) {
+						return 0;
+					}
+
+					if(!is_fld_virtual && rec_offs_nth_extern(offsets, i)) {
+					} else if(!is_fld_multi_val) {
+						ptr += mach_write_compressed(ptr, flen);
+					}
+
+					if (is_fld_multi_val) {
+					} else if (flen != UNIV_SQL_NULL) {
+						if (trx_undo_left(undo_page, ptr) < flen) {
+							return 0;
+						}
+
+						ut_memcpy(ptr, field, flen);
+						ptr += flen;
+
+						if (!is_fld_virtual && rec_offs_nth_extern(offsets, i)) {
+						}
+					}
+
+					if (is_fld_virtual) {
+					} 
+				}
+			}
+
+
+		} else {
+			if (trx_undo_left(undo_page, ptr) < 5) {
+			return 0;
+			}
+
+			ulint n_updated = upd_get_n_fields(update);
+
+			/* If this is an online update while an inplace alter table
+			is in progress and the table has virtual column, we will
+			need to double check if there are any non-indexed columns
+			being registered in update vector in case they will be indexed
+			in new table */
+			if (dict_index_is_online_ddl(index) && index->table->n_v_cols > 0) {
+				for (i = 0; i < upd_get_n_fields(update); i++) {
+					upd_field_t *fld = upd_get_nth_field(update, i);
+					ulint pos = fld->field_no;
+
+					/* These columns must not have an index
+					on them */
+					if (upd_fld_is_virtual_col(fld) &&
+						  dict_table_get_nth_v_col(table, pos)->v_indexes->empty()) {
+						n_updated--;
+					}
+				}
+			}
+
+			ptr += mach_write_compressed(ptr, n_updated);
+
+			for (i = 0; i < upd_get_n_fields(update); i++) {
+				upd_field_t *fld = upd_get_nth_field(update, i);
+
+				bool is_virtual = upd_fld_is_virtual_col(fld);
+				bool is_multi_val = upd_fld_is_multi_value_col(fld);
+				ulint max_v_log_len = 0;
+
+				ulint pos = fld->field_no;
+
+      /* Write field number to undo log */
+				if (trx_undo_left(undo_page, ptr) < 5) {
+					return 0;
+				}
+
+				if (is_virtual) {
+					/* Skip the non-indexed column, during
+					an online alter table */
+					if (dict_index_is_online_ddl(index) &&
+						dict_table_get_nth_v_col(table, pos)->v_indexes->empty()) {
+						continue;
+					}
+
+					/* add REC_MAX_N_FIELDS to mark this
+					is a virtual col */
+					pos += REC_MAX_N_FIELDS;
+				}
+
+				ptr += mach_write_compressed(ptr, pos);
+
+				/* Save the old value of field */
+				if (is_virtual) {
+					ut_ad(fld->field_no < table->n_v_def);
+
+					ptr = trx_undo_log_v_idx(undo_page, table, fld->field_no, ptr,
+                                 first_v_col);
+					if (ptr == NULL) {
+						return 0;
+					}
+					first_v_col = false;
+
+					max_v_log_len = dict_max_v_field_len_store_undo(table, fld->field_no);
+
+					field = static_cast<byte *>(fld->old_v_val->data);
+					flen = fld->old_v_val->len;
+
+					/* Only log sufficient bytes for index
+					record update */
+					if (flen != UNIV_SQL_NULL) {
+						flen = ut_min(flen, max_v_log_len);
+					}
+				} else {
+					field = rec_get_nth_field_instant(rec, offsets, pos, index, &flen);
+				}
+
+				if (trx_undo_left(undo_page, ptr) < 15) {
+					return 0;
+				}
+
+				if (!is_virtual && rec_offs_nth_extern(offsets, pos)) {
+					ut_ad(!is_multi_val);
+					const dict_col_t *col = index->get_col(pos);
+					ulint prefix_len = dict_max_field_len_store_undo(table, col);
+
+					ut_ad(prefix_len + BTR_EXTERN_FIELD_REF_SIZE <= sizeof ext_buf);
+
+					ptr = trx_undo_page_report_modify_ext(
+						  trx, index, ptr,
+							col->ord_part && !ignore_prefix &&
+								      flen < REC_ANTELOPE_MAX_INDEX_COL_LEN
+									? ext_buf
+									: NULL,
+							prefix_len, dict_table_page_size(table), &field, &flen,
+							dict_table_is_sdi(table->id), SPATIAL_UNKNOWN);
+
+					/* Notify purge that it eventually has to
+					free the old externally stored field */
+
+					undo_ptr->update_undo->del_marks = TRUE;
+
+					*type_cmpl_ptr |= TRX_UNDO_UPD_EXTERN;
+				} else if (!is_multi_val) {
+					ptr += mach_write_compressed(ptr, flen);
+				}
+
+				if (is_multi_val) {
+					bool suc = trx_undo_store_multi_value(undo_page, fld->old_v_val, &ptr);
+					if (!suc) {
+						return 0;
+					}
+				} else if (flen != UNIV_SQL_NULL) {
+					if (trx_undo_left(undo_page, ptr) < flen) {
+						return 0;
+					}
+
+					ut_memcpy(ptr, field, flen);
+					ptr += flen;
+
+					if (!is_virtual && rec_offs_nth_extern(offsets, pos)) {
+						ptr = trx_undo_report_blob_update(undo_page, index, ptr, field, flen,
+							                                update, fld, mtr);
+
+						if (ptr == nullptr) {
+							return 0;
+						}
+					}
+				}
+
+				/* Also record the new value for virtual column */
+				if (is_virtual) {
+					field = static_cast<byte *>(fld->new_val.data);
+					flen = fld->new_val.len;
+					if (flen != UNIV_SQL_NULL) {
+						flen = ut_min(flen, max_v_log_len);
+					}
+
+					if (trx_undo_left(undo_page, ptr) < 15) {
+						return 0;
+					}
+
+					if (is_multi_val) {
+						bool suc = trx_undo_store_multi_value(undo_page, &fld->new_val, &ptr);
+						if (!suc) {
+							return 0;
+						}
+					}	else {
+						ptr += mach_write_compressed(ptr, flen);
+
+						if (flen != UNIV_SQL_NULL) {
+							if (trx_undo_left(undo_page, ptr) < flen) {
+							 return 0;
+							}
+
+							ut_memcpy(ptr, field, flen);
+							ptr += flen;
+						}
+					}
+				}
+			}
+		}
+	#else
     if (trx_undo_left(undo_page, ptr) < 5) {
       return 0;
     }
@@ -1488,6 +1792,7 @@ static ulint trx_undo_page_report_modify(
         }
       }
     }
+	#endif
   }
 
   /* Reset the first_v_col, so to put the virtual column undo
