@@ -56,6 +56,13 @@ UNIV_INLINE
 trx_undo_rec_t *trx_undo_rec_copy(const trx_undo_rec_t *undo_rec,
                                   mem_heap_t *heap);
 
+#ifdef SCSLAB_CVC
+
+#define USER_RECORD 0xF0
+#define NON_USER_RECORD 0x0F
+
+#endif
+
 /** Reads the undo log record type.
  @return record type */
 UNIV_INLINE

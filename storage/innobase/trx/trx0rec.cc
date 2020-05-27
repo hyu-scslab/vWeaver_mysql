@@ -1221,6 +1221,7 @@ static ulint trx_undo_page_report_modify(
   ibool ignore_prefix = FALSE;
   byte ext_buf[REC_VERSION_56_MAX_INDEX_COL_LEN + BTR_EXTERN_FIELD_REF_SIZE];
   bool first_v_col = true;
+	bool is_user_record = rec_is_user_record(rec, index);
 
   ut_a(index->is_clustered());
   ut_ad(rec_offs_validate(rec, index, offsets));
@@ -1240,7 +1241,11 @@ static ulint trx_undo_page_report_modify(
 
   ut_ad(first_free <= UNIV_PAGE_SIZE);
 
+#ifdef SCSLAB_CVC
+  if (trx_undo_left(undo_page, ptr) < 50 + 100) {
+#else
   if (trx_undo_left(undo_page, ptr) < 50) {
+#endif
     /* NOTE: the value 50 must be big enough so that the general
     fields written below fit on the undo log page */
 
@@ -1306,8 +1311,20 @@ static ulint trx_undo_page_report_modify(
                             &flen);
   ut_ad(flen == DATA_ROLL_PTR_LEN);
 
-  ptr += mach_u64_write_compressed(ptr, trx_read_roll_ptr(field));
 
+#ifdef SCSLAB_CVC
+
+	if(is_user_record) {
+		*ptr++ = USER_RECORD;
+		ptr += mach_u64_write_compressed(ptr, trx_read_roll_ptr(field));
+		ptr += mach_u64_write_compressed(ptr, trx_read_roll_ptr(field));
+		ptr += mach_u64_write_compressed(ptr, trx_read_roll_ptr(field));
+	} else {
+		*ptr++ = NON_USER_RECORD;
+	}
+#endif
+
+  ptr += mach_u64_write_compressed(ptr, trx_read_roll_ptr(field));
   /*----------------------------------------*/
   /* Store then the fields required to uniquely determine the
   record which will be modified in the clustered index */
@@ -1342,7 +1359,6 @@ static ulint trx_undo_page_report_modify(
   if (update) {
 
 	#ifdef SCSLAB_CVC
-		bool is_user_record = rec_is_user_record(rec, index);
 		ulint j = 0, pos;
 		upd_field_t * fld;
 
@@ -2016,6 +2032,17 @@ byte *trx_undo_update_rec_get_sys_cols(
   /* Read the values of the system columns */
 
   *trx_id = mach_u64_read_next_compressed(&ptr);
+
+#ifdef SCSLAB_CVC
+	const byte is_user_record = mach_read_from_1(ptr);
+	ptr += 1;
+	if(is_user_record == USER_RECORD) {
+		*roll_ptr = mach_u64_read_next_compressed(&ptr);
+		*roll_ptr = mach_u64_read_next_compressed(&ptr);
+		*roll_ptr = mach_u64_read_next_compressed(&ptr);
+	}
+
+#endif
   *roll_ptr = mach_u64_read_next_compressed(&ptr);
 
   return (const_cast<byte *>(ptr));
@@ -2776,6 +2803,7 @@ bool trx_undo_prev_version_build(
   ulint cmpl_info;
   bool dummy_extern;
   byte *buf;
+	bool is_user_record = rec_is_user_record(rec, index);
 
   ut_ad(!rw_lock_own(&purge_sys->latch, RW_LOCK_S));
   ut_ad(mtr_memo_contains_page(index_mtr, index_rec, MTR_MEMO_PAGE_S_FIX) ||
@@ -2824,6 +2852,9 @@ bool trx_undo_prev_version_build(
   }
 
   ptr = trx_undo_update_rec_get_sys_cols(ptr, &trx_id, &roll_ptr, &info_bits);
+
+
+
 
   /* (a) If a clustered index record version is such that the
   trx id stamp in it is bigger than purge_sys->view, then the
