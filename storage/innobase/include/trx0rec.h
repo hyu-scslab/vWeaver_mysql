@@ -58,9 +58,11 @@ trx_undo_rec_t *trx_undo_rec_copy(const trx_undo_rec_t *undo_rec,
 
 #ifdef SCSLAB_CVC
 
-#define USER_RECORD 0xF0
-#define NON_USER_RECORD 0x0F
+#define NON_USER_RECORD 0x00
 
+bool rec_is_user_record(
+		const rec_t*						rec,
+		const dict_index_t*			index);
 #endif
 
 /** Reads the undo log record type.

@@ -40,6 +40,7 @@ external tools. */
 #include "mem0mem.h"
 #include "rem/rec.h"
 #include "rem0rec.h"
+#include "trx0rec.h"
 
 /** The following function determines the offsets to each field in the
  record.	 The offsets are written to a previously allocated array of

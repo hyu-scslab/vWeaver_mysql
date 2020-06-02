@@ -1182,6 +1182,7 @@ bool rec_is_user_record(
 
 #endif
 
+
 /**********************************************************************/ /**
  Reports in the undo log of an update or delete marking of a clustered index
  record.
@@ -1221,7 +1222,9 @@ static ulint trx_undo_page_report_modify(
   ibool ignore_prefix = FALSE;
   byte ext_buf[REC_VERSION_56_MAX_INDEX_COL_LEN + BTR_EXTERN_FIELD_REF_SIZE];
   bool first_v_col = true;
+#ifdef SCSLAB_CVC
 	bool is_user_record = rec_is_user_record(rec, index);
+#endif
 
   ut_a(index->is_clustered());
   ut_ad(rec_offs_validate(rec, index, offsets));
@@ -1305,7 +1308,9 @@ static ulint trx_undo_page_report_modify(
   if (ignore_prefix) {
     ignore_prefix = (trx_id != trx->id);
   }
+#ifndef SCSLAB_CVC
   ptr += mach_u64_write_compressed(ptr, trx_id);
+#endif
 
   field = rec_get_nth_field(rec, offsets, index->get_sys_col_pos(DATA_ROLL_PTR),
                             &flen);
@@ -1315,13 +1320,16 @@ static ulint trx_undo_page_report_modify(
 #ifdef SCSLAB_CVC
 
 	if(is_user_record) {
-		*ptr++ = USER_RECORD;
+		*ptr++ = 1;
+		ptr += mach_u64_write_compressed(ptr, trx_id);
 		ptr += mach_u64_write_compressed(ptr, trx_read_roll_ptr(field));
-		ptr += mach_u64_write_compressed(ptr, trx_read_roll_ptr(field));
-		ptr += mach_u64_write_compressed(ptr, trx_read_roll_ptr(field));
+		ptr += mach_u64_write_compressed(ptr, trx_id);
 	} else {
 		*ptr++ = NON_USER_RECORD;
+		ptr += mach_u64_write_compressed(ptr, trx_id);
 	}
+#else
+  ptr += mach_u64_write_compressed(ptr, trx_id);
 #endif
 
   ptr += mach_u64_write_compressed(ptr, trx_read_roll_ptr(field));
@@ -1369,7 +1377,7 @@ static ulint trx_undo_page_report_modify(
 			}
 
 			ulint n_fields = rec_get_n_fields(rec, index);
-			ulint n_updated = upd_get_n_fields(update);
+			//ulint n_updated = upd_get_n_fields(update);
 			fld = upd_get_nth_field(update, j);
 			pos = fld->field_no;
 
@@ -1382,7 +1390,7 @@ static ulint trx_undo_page_report_modify(
 				if (i == pos) {
 					bool is_virtual = upd_fld_is_virtual_col(fld);
 					bool is_multi_val = upd_fld_is_multi_value_col(fld);
-					ulint max_v_log_len = 0;					
+					//ulint max_v_log_len = 0;					
 
 					if (trx_undo_left(undo_page, ptr) < 5) {
 						return 0;
@@ -1431,7 +1439,7 @@ static ulint trx_undo_page_report_modify(
 				} else {
 					bool is_fld_virtual = false;
 					bool is_fld_multi_val = false;
-					ulint max_v_log_len = 0;
+					//ulint max_v_log_len = 0;
 
 					if (trx_undo_left(undo_page, ptr) < 5) {
 						return 0;
@@ -2031,17 +2039,16 @@ byte *trx_undo_update_rec_get_sys_cols(
 
   /* Read the values of the system columns */
 
+#ifndef SCSLAB_CVC
   *trx_id = mach_u64_read_next_compressed(&ptr);
-
-#ifdef SCSLAB_CVC
+#else
 	const byte is_user_record = mach_read_from_1(ptr);
 	ptr += 1;
-	if(is_user_record == USER_RECORD) {
+	*trx_id = mach_u64_read_next_compressed(&ptr);
+	if(is_user_record) {
 		*roll_ptr = mach_u64_read_next_compressed(&ptr);
-		*roll_ptr = mach_u64_read_next_compressed(&ptr);
-		*roll_ptr = mach_u64_read_next_compressed(&ptr);
+		*trx_id = mach_u64_read_next_compressed(&ptr);
 	}
-
 #endif
   *roll_ptr = mach_u64_read_next_compressed(&ptr);
 
@@ -2803,7 +2810,7 @@ bool trx_undo_prev_version_build(
   ulint cmpl_info;
   bool dummy_extern;
   byte *buf;
-	bool is_user_record = rec_is_user_record(rec, index);
+	//bool is_user_record = rec_is_user_record(rec, index);
 
   ut_ad(!rw_lock_own(&purge_sys->latch, RW_LOCK_S));
   ut_ad(mtr_memo_contains_page(index_mtr, index_rec, MTR_MEMO_PAGE_S_FIX) ||
