@@ -153,9 +153,9 @@ typedef ib_id_t undo_no_t;
 
 #ifdef SCSLAB_CVC
 
-#define	ZIGZAG_PTR_NUMBER_IN_REC	2
-#define get_zigzag_len(x) ((x) * sizeof(trx_id_t) + (x) * sizeof(roll_ptr_t))
-#define CUR_ZIGZAG_LEN	(ulint)(get_zigzag_len(ZIGZAG_PTR_NUMBER_IN_REC))
+#define	VRIDGE_PTR_NUMBER_IN_REC	2
+#define get_vridge_len(x) ((x) * sizeof(trx_id_t) + (x) * sizeof(roll_ptr_t))
+#define CUR_VRDIGE_LEN	(ulint)(get_vridge_len(VRIDGE_PTR_NUMBER_IN_REC))
 
 #endif
 
