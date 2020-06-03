@@ -1215,6 +1215,9 @@ rec_t *page_cur_insert_rec_low(
   ulint heap_no;      /*!< heap number of the inserted
                       record */
 
+#ifdef SCSLAB_CVC
+	bool is_user_record = rec_is_user_record(rec, index);
+#endif
   ut_ad(rec_offs_validate(rec, index, offsets));
 
   page = page_align(current_rec);
@@ -1232,9 +1235,24 @@ rec_t *page_cur_insert_rec_low(
 #ifdef UNIV_DEBUG_VALGRIND
   {
     const void *rec_start = rec - rec_offs_extra_size(offsets);
+#ifdef SCSLAB_CVC
+		
+    ulint extra_size;
+		
+		if(is_user_record) {
+			extra_size = rec_offs_extra_size(offsets) -
+                       (rec_offs_comp(offsets) ? REC_N_NEW_EXTRA_BYTES + CUR_VRIDGE_LEN
+                                               : REC_N_OLD_EXTRA_BYTES);
+		} else {
+			extra_size = rec_offs_extra_size(offsets) -
+                       (rec_offs_comp(offsets) ? REC_N_NEW_EXTRA_BYTES
+                                               : REC_N_OLD_EXTRA_BYTES);
+		}
+#else
     ulint extra_size = rec_offs_extra_size(offsets) -
                        (rec_offs_comp(offsets) ? REC_N_NEW_EXTRA_BYTES
                                                : REC_N_OLD_EXTRA_BYTES);
+#endif
 
     /* All data bytes of the record must be valid. */
     UNIV_MEM_ASSERT_RW(rec, rec_offs_data_size(offsets));
@@ -1291,6 +1309,12 @@ rec_t *page_cur_insert_rec_low(
 
   /* 3. Create the record */
   insert_rec = rec_copy(insert_buf, rec, offsets);
+#ifdef SCSLAB_CVC
+	if (is_user_record) {
+		rec_set_vridge_info(insert_rec - rec_offs_extra_size(offsets));
+	}
+#endif
+	
   rec_offs_make_valid(insert_rec, index, offsets);
 
   /* 4. Insert the record in the linked list of records */

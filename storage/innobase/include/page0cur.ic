@@ -215,6 +215,9 @@ hold the tuple converted record. */
   rec_t *insert_rec;
 
   ulint size = rec_get_converted_size(index, tuple, n_ext);
+#ifdef SCSLAB_CVC
+	size += CUR_VRIDGE_LEN;
+#endif
 
   if (!*heap) {
     *heap = mem_heap_create(

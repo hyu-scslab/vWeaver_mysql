@@ -1008,6 +1008,26 @@ rec_t *rec_copy(void *buf, const rec_t *rec, const ulint *offsets) {
   return ((byte *)buf + extra_len);
 }
 
+#ifdef SCSLAB_CVC
+
+UNIV_INLINE
+rec_t *rec_set_vridge_info(void * buf) {
+	trx_id_t trx_id;
+	roll_ptr_t roll_ptr;
+	int i;
+
+	for(i = 0 ; i < VRIDGE_PTR_NUMBER_IN_REC ; i++) {
+		ut_memcpy((byte*)buf + i *(sizeof(trx_id_t) + sizeof(roll_ptr_t)),
+								&trx_id, sizeof(trx_id_t));
+		ut_memcpy((byte*)buf + (i + 1) * sizeof(trx_id_t) + i * sizeof(roll_ptr_t),
+								&roll_ptr, sizeof(roll_ptr_t));
+	}
+
+	return (byte*)buf + CUR_VRIDGE_LEN;
+}
+
+#endif
+
 /** Returns the extra size of an old-style physical record if we know its
  data size and number of fields.
  @return extra size */

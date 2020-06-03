@@ -708,6 +708,24 @@ uint16_t rec_init_null_and_len_comp(const rec_t *rec, const dict_index_t *index,
   return (non_default_fields);
 }
 
+#ifdef SCSLAB_CVC
+UNIV_INLINE
+bool rec_is_user_record(
+		const rec_t*						rec,
+		const dict_index_t*			index)
+{
+	const ulint rec_status = rec_get_status(rec);
+
+	if(!strcmp(index->name, "PRIMARY")
+			&& index->space != dict_sys_t::s_space_id
+			&& rec_status == REC_STATUS_ORDINARY) {
+		return true;
+	}
+	return false;
+}
+#endif
+
+
 /** Determine the offset to each field in a leaf-page record
  in ROW_FORMAT=COMPACT.  This is a special case of
  rec_init_offsets() and rec_get_offsets_func(). */
@@ -730,6 +748,9 @@ void rec_init_offsets_comp_ordinary(
   const byte *lens = nullptr;
   ulint null_mask = 1;
   uint16_t non_default_fields = 0;
+#ifdef SCSLAB_CVC
+	bool is_user_record = rec_is_user_record(rec, index);
+#endif
 
 #ifdef UNIV_DEBUG
   /* We cannot invoke rec_offs_make_valid() here if temp=true.
@@ -828,7 +849,16 @@ void rec_init_offsets_comp_ordinary(
     rec_offs_base(offsets)[i + 1] = len;
   } while (++i < rec_offs_n_fields(offsets));
 
+#ifdef SCSLAB_CVC
+	if(is_user_record) {
+		*rec_offs_base(offsets) = (rec - (lens + 1) + CUR_VRIDGE_LEN) 
+																| REC_OFFS_COMPACT | any_ext;
+	} else {
+		*rec_offs_base(offsets) = (rec - (lens + 1)) | REC_OFFS_COMPACT | any_ext;
+	}
+#else
   *rec_offs_base(offsets) = (rec - (lens + 1)) | REC_OFFS_COMPACT | any_ext;
+#endif
 }
 
 /** The following function is used to test whether the data offsets in the

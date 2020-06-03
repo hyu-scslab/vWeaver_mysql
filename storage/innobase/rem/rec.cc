@@ -40,7 +40,6 @@ external tools. */
 #include "mem0mem.h"
 #include "rem/rec.h"
 #include "rem0rec.h"
-#include "trx0rec.h"
 
 /** The following function determines the offsets to each field in the
  record.	 The offsets are written to a previously allocated array of
@@ -167,7 +166,17 @@ void rec_init_offsets(const rec_t *rec,          /*!< in: physical record */
       rec_offs_base(offsets)[i + 1] = len;
     } while (++i < rec_offs_n_fields(offsets));
 
+#ifdef SCSLAB_CVC
+		bool is_user_record = rec_is_user_record(rec, index);
+		if(is_user_record) {
+			*rec_offs_base(offsets) = (rec - (lens + 1) + CUR_VRIDGE_LEN) 
+																	| REC_OFFS_COMPACT;
+		} else {
+			*rec_offs_base(offsets) = (rec - (lens + 1)) | REC_OFFS_COMPACT;
+		}
+#else
     *rec_offs_base(offsets) = (rec - (lens + 1)) | REC_OFFS_COMPACT;
+#endif
   } else {
     /* Old-style record: determine extra size and end offsets */
     offs = REC_N_OLD_EXTRA_BYTES;

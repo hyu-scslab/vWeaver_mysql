@@ -1165,7 +1165,9 @@ static byte *trx_undo_report_blob_update(page_t *undo_page, dict_index_t *index,
   return undo_ptr;
 }
 
+/*
 #ifdef SCSLAB_CVC
+UNIV_INLINE
 bool rec_is_user_record(
 		const rec_t*						rec,
 		const dict_index_t*			index)
@@ -1181,7 +1183,7 @@ bool rec_is_user_record(
 }
 
 #endif
-
+*/
 
 /**********************************************************************/ /**
  Reports in the undo log of an update or delete marking of a clustered index

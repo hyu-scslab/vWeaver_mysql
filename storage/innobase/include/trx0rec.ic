@@ -96,4 +96,5 @@ trx_undo_rec_t *trx_undo_rec_copy(
   ut_ad(len < UNIV_PAGE_SIZE);
   return ((trx_undo_rec_t *)mem_heap_dup(heap, undo_rec, len));
 }
+
 #endif /* !UNIV_HOTBACKUP */
