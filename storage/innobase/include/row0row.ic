@@ -61,6 +61,11 @@ ulint row_get_trx_id_offset(
   return (offset);
 }
 
+#ifdef SCSLAB_CVC
+
+
+#endif
+
 /** Reads the trx id field from a clustered index record.
  @return value of the field */
 UNIV_INLINE
