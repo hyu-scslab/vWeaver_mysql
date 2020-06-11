@@ -198,7 +198,6 @@ dberr_t trx_undo_report_row_operation(
     const rec_t *rec,            /*!< in: case of an update or delete
                                  marking, the record in the clustered
                                  index, otherwise NULL */
-#endif
     const ulint *offsets,        /*!< in: rec_get_offsets(rec) */
     roll_ptr_t *roll_ptr)        /*!< out: rollback pointer to the
                                  inserted undo log record,
