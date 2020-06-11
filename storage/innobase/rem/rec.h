@@ -748,9 +748,6 @@ void rec_init_offsets_comp_ordinary(
   const byte *lens = nullptr;
   ulint null_mask = 1;
   uint16_t non_default_fields = 0;
-#ifdef SCSLAB_CVC
-	bool is_user_record = rec_is_user_record(rec, index);
-#endif
 
 #ifdef UNIV_DEBUG
   /* We cannot invoke rec_offs_make_valid() here if temp=true.
@@ -850,7 +847,7 @@ void rec_init_offsets_comp_ordinary(
   } while (++i < rec_offs_n_fields(offsets));
 
 #ifdef SCSLAB_CVC
-	if(is_user_record) {
+	if(rec_is_user_record(rec, index)) {
 		*rec_offs_base(offsets) = (rec - (lens + 1) + CUR_VRIDGE_LEN) 
 																| REC_OFFS_COMPACT | any_ext;
 	} else {

@@ -46,6 +46,11 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include "rem0cmp.h"
 #endif /* !UNIV_HOTBACKUP */
 
+#ifdef SCSLAB_CVC
+#include "row0row.h"
+#include "trx0rec.h"
+#endif
+
 #ifdef PAGE_CUR_ADAPT
 #ifdef UNIV_SEARCH_PERF_STAT
 static ulint page_cur_short_succ = 0;
@@ -1215,9 +1220,6 @@ rec_t *page_cur_insert_rec_low(
   ulint heap_no;      /*!< heap number of the inserted
                       record */
 
-#ifdef SCSLAB_CVC
-	bool is_user_record = rec_is_user_record(rec, index);
-#endif
   ut_ad(rec_offs_validate(rec, index, offsets));
 
   page = page_align(current_rec);
@@ -1235,24 +1237,9 @@ rec_t *page_cur_insert_rec_low(
 #ifdef UNIV_DEBUG_VALGRIND
   {
     const void *rec_start = rec - rec_offs_extra_size(offsets);
-#ifdef SCSLAB_CVC
-		
-    ulint extra_size;
-		
-		if(is_user_record) {
-			extra_size = rec_offs_extra_size(offsets) -
-                       (rec_offs_comp(offsets) ? REC_N_NEW_EXTRA_BYTES + CUR_VRIDGE_LEN
-                                               : REC_N_OLD_EXTRA_BYTES);
-		} else {
-			extra_size = rec_offs_extra_size(offsets) -
-                       (rec_offs_comp(offsets) ? REC_N_NEW_EXTRA_BYTES
-                                               : REC_N_OLD_EXTRA_BYTES);
-		}
-#else
     ulint extra_size = rec_offs_extra_size(offsets) -
                        (rec_offs_comp(offsets) ? REC_N_NEW_EXTRA_BYTES
                                                : REC_N_OLD_EXTRA_BYTES);
-#endif
 
     /* All data bytes of the record must be valid. */
     UNIV_MEM_ASSERT_RW(rec, rec_offs_data_size(offsets));
@@ -1309,12 +1296,24 @@ rec_t *page_cur_insert_rec_low(
 
   /* 3. Create the record */
   insert_rec = rec_copy(insert_buf, rec, offsets);
+	
 #ifdef SCSLAB_CVC
-	if (is_user_record) {
-		rec_set_vridge_info(insert_rec - rec_offs_extra_size(offsets));
+	ulint flen;
+	roll_ptr_t roll_ptr;
+	trx_id_t trx_id;
+	bool is_user_record = rec_is_user_record(rec, index);
+	if(is_user_record) {
+		roll_ptr = row_get_rec_roll_ptr(rec, index, offsets);
+		trx_id = trx_read_trx_id(rec_get_nth_field(rec, offsets,
+																					index->get_sys_col_pos(DATA_TRX_ID),
+																					&flen));
+	
+		if (trx_undo_roll_ptr_is_insert(roll_ptr)) {
+			rec_init_vridge_info(insert_rec - rec_offs_extra_size(offsets), trx_id);
+		}
 	}
 #endif
-	
+
   rec_offs_make_valid(insert_rec, index, offsets);
 
   /* 4. Insert the record in the linked list of records */

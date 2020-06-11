@@ -720,7 +720,6 @@ static void row_vers_build_cur_vrow_low(
     trx_undo_prev_version_build(rec, mtr, version, clust_index, clust_offsets,
                                 heap, &prev_version, NULL, vrow, status,
                                 nullptr);
-
     if (heap2) {
       mem_heap_free(heap2);
     }
@@ -1160,6 +1159,7 @@ ibool row_vers_old_has_index_entry(
     trx_undo_prev_version_build(
         rec, mtr, version, clust_index, clust_offsets, heap, &prev_version,
         NULL, dict_index_has_virtual(index) ? &vrow : NULL, 0, nullptr);
+
     mem_heap_free(heap2); /* free version and clust_offsets */
 
     if (!prev_version) {
@@ -1237,6 +1237,9 @@ ibool row_vers_old_has_index_entry(
   }
 }
 
+///////////* compare function implementation   *////
+
+
 /** Constructs the version of a clustered index record which a consistent
  read should see. We assume that the trx id stored in rec is such that
  the consistent read should not see rec in its present version.
@@ -1270,6 +1273,7 @@ dberr_t row_vers_build_for_consistent_read(
   mem_heap_t *heap = NULL;
   byte *buf;
   dberr_t err;
+	bool is_user_record = rec_is_user_record(rec, index);
 
   ut_ad(index->is_clustered());
   ut_ad(mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_X_FIX) ||
@@ -1291,6 +1295,178 @@ dberr_t row_vers_build_for_consistent_read(
 
   version = rec;
 
+#ifdef SCSLAB_CVC
+	
+	if(is_user_record) {
+		mem_heap_t * prev_heap = heap;
+		heap = mem_heap_create(1024);
+
+		if (vrow) {
+			*vrow = NULL;
+		}
+
+		bool purge_sees =
+				trx_undo_prev_version_build_in_vridge(rec, mtr, version, index, *offsets
+																							, &heap, &prev_version, NULL
+																							, vrow, 0, lob_undo, view);
+
+		err = (purge_sees) ? DB_SUCCESS : DB_MISSING_HISTORY;
+
+		if (prev_heap != NULL) {
+			mem_heap_free(prev_heap);
+		}
+
+		if (prev_version == NULL) {
+			/* It was a freshly inserted version */
+			*old_vers = NULL;
+			ut_ad(!vrow || !(*vrow));
+			return err;
+		}
+
+		*offsets = rec_get_offsets(prev_version, index, *offsets, ULINT_UNDEFINED,
+			                          offset_heap);
+
+#if defined UNIV_DEBUG || defined UNIV_BLOB_LIGHT_DEBUG
+		ut_a(!rec_offs_any_null_extern(prev_version, *offsets));
+#endif /* UNIV_DEBUG || UNIV_BLOB_LIGHT_DEBUG */
+
+		trx_id = row_get_rec_trx_id(prev_version, index, *offsets);
+
+		if (view->changes_visible(trx_id, index->table->name)) {
+			buf = static_cast<byte *>(mem_heap_alloc(in_heap
+																								, rec_offs_size(*offsets)));
+
+			*old_vers = rec_copy(buf, prev_version, *offsets);
+			rec_offs_make_valid(*old_vers, index, *offsets);
+
+			if (vrow && *vrow) {
+				*vrow = dtuple_copy(*vrow, in_heap);
+				dtuple_dup_v_fld(*vrow, in_heap);
+			}
+
+			return err;
+		}
+
+		version = prev_version;
+#ifdef UNIV_DEBUG
+		/*
+		rec_t * version_cached = version;
+		for (;;) {
+			mem_heap_t *prev_heap = heap;
+
+			heap = mem_heap_create(1024);
+
+			if (vrow) {
+				*vrow = NULL;
+			}
+
+			bool purge_sees =
+				  trx_undo_prev_version_build(rec, mtr, version, index, *offsets, heap,
+                                    &prev_version, NULL, vrow, 0, lob_undo);
+
+			err = (purge_sees) ? DB_SUCCESS : DB_MISSING_HISTORY;
+
+			if (prev_heap != NULL) {
+				mem_heap_free(prev_heap);
+			}
+
+			if (prev_version == NULL) {
+				*old_vers = NULL;
+				ut_ad(!vrow || !(*vrow));
+				break;
+			}
+
+			*offsets = rec_get_offsets(prev_version, index, *offsets, ULINT_UNDEFINED,
+                               offset_heap);
+
+#if defined UNIV_DEBUG || defined UNIV_BLOB_LIGHT_DEBUG
+			ut_a(!rec_offs_any_null_extern(prev_version, *offsets));
+#endif
+
+			trx_id = row_get_rec_trx_id(prev_version, index, *offsets);
+
+			if (view->changes_visible(trx_id, index->table->name)) {
+
+				buf =
+						static_cast<byte *>(mem_heap_alloc(in_heap
+																								, rec_offs_size(*offsets)));
+
+				*old_vers = rec_copy(buf, prev_version, *offsets);
+				rec_offs_make_valid(*old_vers, index, *offsets);
+
+				if (vrow && *vrow) {
+					*vrow = dtuple_copy(*vrow, in_heap);
+					dtuple_dup_v_fld(*vrow, in_heap);
+				}
+				break;
+			}
+
+    version = prev_version;
+		}
+
+		*/
+#endif
+	} else {
+		for (;;) {
+			mem_heap_t *prev_heap = heap;
+
+			heap = mem_heap_create(1024);
+
+			if (vrow) {
+				*vrow = NULL;
+			}
+
+			/* If purge can't see the record then we can't rely on
+			the UNDO log record. */
+
+			bool purge_sees =
+				  trx_undo_prev_version_build(rec, mtr, version, index, *offsets, heap,
+                                    &prev_version, NULL, vrow, 0, lob_undo);
+
+			err = (purge_sees) ? DB_SUCCESS : DB_MISSING_HISTORY;
+
+			if (prev_heap != NULL) {
+				mem_heap_free(prev_heap);
+			}
+
+			if (prev_version == NULL) {
+				/* It was a freshly inserted version */
+				*old_vers = NULL;
+				ut_ad(!vrow || !(*vrow));
+				break;
+			}
+
+			*offsets = rec_get_offsets(prev_version, index, *offsets, ULINT_UNDEFINED,
+                               offset_heap);
+
+#if defined UNIV_DEBUG || defined UNIV_BLOB_LIGHT_DEBUG
+			ut_a(!rec_offs_any_null_extern(prev_version, *offsets));
+#endif /* UNIV_DEBUG || UNIV_BLOB_LIGHT_DEBUG */
+
+			trx_id = row_get_rec_trx_id(prev_version, index, *offsets);
+
+			if (view->changes_visible(trx_id, index->table->name)) {
+				/* The view already sees this version: we can copy
+				it to in_heap and return */
+
+				buf =
+						static_cast<byte *>(mem_heap_alloc(in_heap
+																								, rec_offs_size(*offsets)));
+
+				*old_vers = rec_copy(buf, prev_version, *offsets);
+				rec_offs_make_valid(*old_vers, index, *offsets);
+
+				if (vrow && *vrow) {
+					*vrow = dtuple_copy(*vrow, in_heap);
+					dtuple_dup_v_fld(*vrow, in_heap);
+				}
+				break;
+			}
+
+    version = prev_version;
+		}
+	}
+#else
   for (;;) {
     mem_heap_t *prev_heap = heap;
 
@@ -1348,9 +1524,8 @@ dberr_t row_vers_build_for_consistent_read(
 
     version = prev_version;
   }
-
+#endif
   mem_heap_free(heap);
-
   return err;
 }
 

@@ -3125,7 +3125,7 @@ UNIV_INLINE MY_ATTRIBUTE((warn_unused_result)) dberr_t
         roll_ptr_t *roll_ptr) /*!< out: roll pointer */
 {
   dict_index_t *index;
-  const rec_t *rec;
+  rec_t *rec;
   dberr_t err;
 
   ut_ad(thr != NULL || (flags & BTR_NO_LOCKING_FLAG));

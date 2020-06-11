@@ -2908,6 +2908,7 @@ void srv_start_purge_threads() {
     return;
   }
 
+	
   srv_threads.m_purge_coordinator =
       os_thread_create(srv_purge_thread_key, srv_purge_coordinator_thread);
 
@@ -3034,7 +3035,11 @@ void srv_start_threads_after_ddl_recovery() {
 
   /* Now the InnoDB Metadata and file system should be consistent.
   Start the Purge thread */
+#ifdef SCSLAB_CVC
+  //srv_start_purge_threads();
+#else
   srv_start_purge_threads();
+#endif
 }
 
 #if 0

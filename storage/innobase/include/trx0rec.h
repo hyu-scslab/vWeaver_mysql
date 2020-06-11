@@ -40,6 +40,9 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include "lob0undo.h"
 #include "mtr0mtr.h"
 #include "page0types.h"
+#ifdef SCSLAB_CVC
+#include "read0types.h"
+#endif
 #include "rem0types.h"
 #include "row0log.h"
 #include "row0types.h"
@@ -60,11 +63,6 @@ trx_undo_rec_t *trx_undo_rec_copy(const trx_undo_rec_t *undo_rec,
 
 #define NON_USER_RECORD 0x00
 
-/*
-bool rec_is_user_record(
-		const rec_t*						rec,
-		const dict_index_t*			index);
-*/
 #endif
 
 /** Reads the undo log record type.
@@ -120,7 +118,15 @@ byte *trx_undo_update_rec_get_sys_cols(
                           general parameters */
     trx_id_t *trx_id,     /*!< out: trx id */
     roll_ptr_t *roll_ptr, /*!< out: roll ptr */
-    ulint *info_bits);    /*!< out: info bits state */
+    ulint *info_bits
+#ifdef SCSLAB_CVC
+		, cvc_level_t * level
+		, trx_id_t * vridge_trx_id
+		, roll_ptr_t * vridge_roll_ptr
+		, trx_id_t * cur_next_trx_id
+		, trx_id_t * cur_vridge_trx_id
+#endif	
+		);    /*!< out: info bits state */
 
 struct type_cmpl_t;
 
@@ -192,6 +198,7 @@ dberr_t trx_undo_report_row_operation(
     const rec_t *rec,            /*!< in: case of an update or delete
                                  marking, the record in the clustered
                                  index, otherwise NULL */
+#endif
     const ulint *offsets,        /*!< in: rec_get_offsets(rec) */
     roll_ptr_t *roll_ptr)        /*!< out: rollback pointer to the
                                  inserted undo log record,
@@ -254,6 +261,17 @@ bool trx_undo_prev_version_build(const rec_t *index_rec, mtr_t *index_mtr,
                                  rec_t **old_vers, mem_heap_t *v_heap,
                                  const dtuple_t **vrow, ulint v_status,
                                  lob::undo_vers_t *lob_undo);
+
+bool trx_undo_prev_version_build_in_vridge(const rec_t *index_rec,
+																					 mtr_t *index_mtr,
+																					 const rec_t *rec, 
+																					 const dict_index_t *index,
+																					 ulint *offsets, mem_heap_t **heap,
+																					 rec_t **old_vers, mem_heap_t *v_heap,
+																					 const dtuple_t **vrow, ulint v_status,
+																					 lob::undo_vers_t *lob_undo,
+																					 ReadView * view);
+
 
 #endif /* !UNIV_HOTBACKUP */
 /** Parses a redo log record of adding an undo log record.
@@ -413,7 +431,44 @@ bool trx_undo_rec_is_multi_value(const byte *undo_rec);
 @param[in,out]	heap	memory heap
 @return remaining part of undo log record after reading these values */
 const byte *trx_undo_rec_get_multi_value(const byte *ptr, dfield_t *field,
-                                         mem_heap_t *heap);
+                                        mem_heap_t *heap);
+#ifdef SCSLAB_CVC
+byte *trx_undo_rec_get_pars(
+    trx_undo_rec_t *undo_rec, /*!< in: undo log record */
+    ulint *type,              /*!< out: undo record type:
+                              TRX_UNDO_INSERT_REC, ... */
+    ulint *cmpl_info,         /*!< out: compiler info, relevant only
+                              for update type records */
+    bool *updated_extern,     /*!< out: true if we updated an
+                              externally stored fild */
+    undo_no_t *undo_no,       /*!< out: undo log record number */
+    table_id_t *table_id,     /*!< out: table id */
+    type_cmpl_t &type_cmpl);  /*!< out: type compilation info */
+
+bool trx_get_next_same_level_ridge(
+		dict_index_t * index
+		,cvc_level_t level
+		,trx_id_t rec_trx_id
+		,trx_id_t vridge_trx_id
+		,roll_ptr_t vridge_roll_ptr
+		,trx_id_t vridge_next_trx_id
+		,trx_id_t * pvridge_trx_id
+		,roll_ptr_t * pvridge_roll_ptr
+		,trx_id_t * pvridge_next_trx_id);
+
+byte* trx_get_undo_rec_following_ridge(
+		const dict_index_t * index
+		,const rec_t * rec
+		,ulint * offsets
+		,mem_heap_t ** pheap
+		,roll_ptr_t roll_ptr
+		,trx_id_t trx_id
+		,ReadView * view
+		,trx_id_t * ptrx_id
+		,roll_ptr_t * proll_ptr
+		,trx_id_t * pvridge_next_trx_id);
+
+#endif
 #include "trx0rec.ic"
 
 #endif /* !UNIV_HOTBACKUP */

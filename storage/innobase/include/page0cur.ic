@@ -216,6 +216,11 @@ hold the tuple converted record. */
 
   ulint size = rec_get_converted_size(index, tuple, n_ext);
 #ifdef SCSLAB_CVC
+	///
+	/// Writer - KiTaekLee.
+	/// Breif - To allocate addtional space in record for vridge(inkey_ridge),
+	///					need size(=CUR_VRIDGE_LEN) is added to original size(=size).
+	///         
 	size += CUR_VRIDGE_LEN;
 #endif
 

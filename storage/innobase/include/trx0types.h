@@ -153,11 +153,13 @@ typedef ib_id_t undo_no_t;
 
 #ifdef SCSLAB_CVC
 
-#define	VRIDGE_PTR_NUMBER_IN_REC	1
-#define get_vridge_len(x) ((x) * sizeof(trx_id_t) + (x) * sizeof(roll_ptr_t))
-#define CUR_VRIDGE_LEN	(ulint)(get_vridge_len(VRIDGE_PTR_NUMBER_IN_REC) + \
-																	sizeof(byte))
+#define VRIDGE_BYTE_NUMBER_IN_REC 2
+#define	VRIDGE_INT64_NUMBER_IN_REC	5
+#define CUR_VRIDGE_LEN (ulint)(sizeof(uint64_t) * VRIDGE_INT64_NUMBER_IN_REC \
+													+ sizeof(byte) * VRIDGE_BYTE_NUMBER_IN_REC)
+#define VRIDGE_NULL	(ulint)0
 
+typedef byte cvc_level_t;
 #endif
 
 /** Maximum transaction identifier */

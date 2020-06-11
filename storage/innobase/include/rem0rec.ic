@@ -1010,21 +1010,36 @@ rec_t *rec_copy(void *buf, const rec_t *rec, const ulint *offsets) {
 
 #ifdef SCSLAB_CVC
 
+/// Writer - KiTaek Lee
+/// Brief - When inserting record, This function initializes the additional 
+///					fields for vridgy(inkey-ridgy).
+///
+///	Additional fields are as follows(Each field is set in order):
+/// 1 byte - next undo log's level
+/// 1 byte - next ridgy's level
+/// 8 byte - the trx id that created the highest level undo log of next ridgy.
+/// 8 byte - the roll ptr of the highest level undo log of next ridgy.
+/// 8 byte - the version of the highest level undo log of next ridgy.
+/// 8 byte - the version of next undolog
+/// 8 byte - the old version id of record. This is used to create a version that
+///					 can be obtained by following roll ptr when creating a new undo log.
+
 UNIV_INLINE
-rec_t *rec_set_vridge_info(void * buf) {
-	trx_id_t trx_id = 0;
-	roll_ptr_t roll_ptr = 0;
+rec_t *rec_init_vridge_info(byte * buf, trx_id_t trx_id) {
+	uint64_t dummy_type = 0;
 	byte coin = 0;
 	int i;
 
-	ut_memcpy((byte*)buf, &coin, sizeof(byte));
-	for(i = 0 ; i < VRIDGE_PTR_NUMBER_IN_REC ; i++) {
-		ut_memcpy((byte*)buf + sizeof(byte) + 
-				i *(sizeof(trx_id_t) + sizeof(roll_ptr_t)), &trx_id, sizeof(trx_id_t));
-		ut_memcpy((byte*)buf + sizeof(byte) +  
-				(i + 1) * sizeof(trx_id_t) + i * sizeof(roll_ptr_t), &roll_ptr
-					, sizeof(roll_ptr_t));
+	*buf= coin;
+	*(buf + 1) = coin;
+
+	for(i = 0 ; i < VRIDGE_INT64_NUMBER_IN_REC - 1; i++) {
+		ut_memcpy((byte*)buf + sizeof(byte) * VRIDGE_BYTE_NUMBER_IN_REC + 
+				i * sizeof(uint64_t), &dummy_type , sizeof(uint64_t));
 	}
+
+	ut_memcpy((byte*)buf + sizeof(byte) * VRIDGE_BYTE_NUMBER_IN_REC +
+							i * sizeof(uint64_t), &trx_id, sizeof(uint64_t));
 
 	return (byte*)buf + CUR_VRIDGE_LEN;
 }
