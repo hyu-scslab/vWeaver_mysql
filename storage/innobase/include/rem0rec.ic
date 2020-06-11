@@ -1008,44 +1008,6 @@ rec_t *rec_copy(void *buf, const rec_t *rec, const ulint *offsets) {
   return ((byte *)buf + extra_len);
 }
 
-#ifdef SCSLAB_CVC
-
-/// Writer - KiTaek Lee
-/// Brief - When inserting record, This function initializes the additional 
-///					fields for vridgy(inkey-ridgy).
-///
-///	Additional fields are as follows(Each field is set in order):
-/// 1 byte - next undo log's level
-/// 1 byte - next ridgy's level
-/// 8 byte - the trx id that created the highest level undo log of next ridgy.
-/// 8 byte - the roll ptr of the highest level undo log of next ridgy.
-/// 8 byte - the version of the highest level undo log of next ridgy.
-/// 8 byte - the version of next undolog
-/// 8 byte - the old version id of record. This is used to create a version that
-///					 can be obtained by following roll ptr when creating a new undo log.
-
-UNIV_INLINE
-rec_t *rec_init_vridge_info(byte * buf, trx_id_t trx_id) {
-	uint64_t dummy_type = 0;
-	byte coin = 0;
-	int i;
-
-	*buf= coin;
-	*(buf + 1) = coin;
-
-	for(i = 0 ; i < VRIDGE_INT64_NUMBER_IN_REC - 1; i++) {
-		ut_memcpy((byte*)buf + sizeof(byte) * VRIDGE_BYTE_NUMBER_IN_REC + 
-				i * sizeof(uint64_t), &dummy_type , sizeof(uint64_t));
-	}
-
-	ut_memcpy((byte*)buf + sizeof(byte) * VRIDGE_BYTE_NUMBER_IN_REC +
-							i * sizeof(uint64_t), &trx_id, sizeof(uint64_t));
-
-	return (byte*)buf + CUR_VRIDGE_LEN;
-}
-
-#endif
-
 /** Returns the extra size of an old-style physical record if we know its
  data size and number of fields.
  @return extra size */

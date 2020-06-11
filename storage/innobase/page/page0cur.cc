@@ -1296,24 +1296,6 @@ rec_t *page_cur_insert_rec_low(
 
   /* 3. Create the record */
   insert_rec = rec_copy(insert_buf, rec, offsets);
-	
-#ifdef SCSLAB_CVC
-	ulint flen;
-	roll_ptr_t roll_ptr;
-	trx_id_t trx_id;
-	bool is_user_record = rec_is_user_record(rec, index);
-	if(is_user_record) {
-		roll_ptr = row_get_rec_roll_ptr(rec, index, offsets);
-		trx_id = trx_read_trx_id(rec_get_nth_field(rec, offsets,
-																					index->get_sys_col_pos(DATA_TRX_ID),
-																					&flen));
-	
-		if (trx_undo_roll_ptr_is_insert(roll_ptr)) {
-			rec_init_vridge_info(insert_rec - rec_offs_extra_size(offsets), trx_id);
-		}
-	}
-#endif
-
   rec_offs_make_valid(insert_rec, index, offsets);
 
   /* 4. Insert the record in the linked list of records */

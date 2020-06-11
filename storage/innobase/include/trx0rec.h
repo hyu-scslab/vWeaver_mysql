@@ -58,13 +58,6 @@ this program; if not, write to the Free Software Foundation, Inc.,
 UNIV_INLINE
 trx_undo_rec_t *trx_undo_rec_copy(const trx_undo_rec_t *undo_rec,
                                   mem_heap_t *heap);
-
-#ifdef SCSLAB_CVC
-
-#define NON_USER_RECORD 0x00
-
-#endif
-
 /** Reads the undo log record type.
  @return record type */
 UNIV_INLINE
@@ -120,11 +113,7 @@ byte *trx_undo_update_rec_get_sys_cols(
     roll_ptr_t *roll_ptr, /*!< out: roll ptr */
     ulint *info_bits
 #ifdef SCSLAB_CVC
-		, cvc_level_t * level
-		, trx_id_t * vridge_trx_id
-		, roll_ptr_t * vridge_roll_ptr
-		, trx_id_t * cur_next_trx_id
-		, trx_id_t * cur_vridge_trx_id
+		,cvc_info_cache * next_undo_info
 #endif	
 		);    /*!< out: info bits state */
 
@@ -195,7 +184,7 @@ dberr_t trx_undo_report_row_operation(
                                  the update vector, otherwise NULL */
     ulint cmpl_info,             /*!< in: compiler info on secondary
                                  index updates */
-    const rec_t *rec,            /*!< in: case of an update or delete
+    rec_t *rec,            /*!< in: case of an update or delete
                                  marking, the record in the clustered
                                  index, otherwise NULL */
     const ulint *offsets,        /*!< in: rec_get_offsets(rec) */
@@ -444,28 +433,24 @@ byte *trx_undo_rec_get_pars(
     table_id_t *table_id,     /*!< out: table id */
     type_cmpl_t &type_cmpl);  /*!< out: type compilation info */
 
+
 bool trx_get_next_same_level_ridge(
-		dict_index_t * index
-		,cvc_level_t level
-		,trx_id_t rec_trx_id
-		,trx_id_t vridge_trx_id
-		,roll_ptr_t vridge_roll_ptr
-		,trx_id_t vridge_next_trx_id
-		,trx_id_t * pvridge_trx_id
-		,roll_ptr_t * pvridge_roll_ptr
-		,trx_id_t * pvridge_next_trx_id);
+		dict_index_t * index,
+		cvc_level_t new_level,
+		cvc_info_cache * next_undo_info);
 
 byte* trx_get_undo_rec_following_ridge(
-		const dict_index_t * index
-		,const rec_t * rec
-		,ulint * offsets
-		,mem_heap_t ** pheap
-		,roll_ptr_t roll_ptr
-		,trx_id_t trx_id
-		,ReadView * view
-		,trx_id_t * ptrx_id
-		,roll_ptr_t * proll_ptr
-		,trx_id_t * pvridge_next_trx_id);
+  const dict_index_t * index,
+  const rec_t * rec,
+  ulint * offsets,
+  mem_heap_t ** pheap,
+  roll_ptr_t roll_ptr,
+  trx_id_t trx_id,
+  ReadView * view,
+  trx_id_t * ptrx_id,
+  roll_ptr_t * proll_ptr,
+  ulint * ptype,
+  ulint * pinfo_bits);
 
 #endif
 #include "trx0rec.ic"

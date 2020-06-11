@@ -306,11 +306,7 @@ UNIV_INLINE MY_ATTRIBUTE((warn_unused_result)) ulint
         bool temp)                 /*!< in: whether this is a
                                    temporary file record */
 {
-#ifdef SCSLAB_CVC
-  ulint extra_size = CUR_VRIDGE_LEN;
-#else
   ulint extra_size = 0;
-#endif
   ulint data_size;
   ulint i;
   ulint n_null = 0;

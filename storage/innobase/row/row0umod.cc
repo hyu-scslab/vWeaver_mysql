@@ -1235,8 +1235,8 @@ static void row_undo_mod_parse_undo_rec(undo_node_t *node, THD *thd,
   clust_index = node->table->first_index();
 
 #ifdef SCSLAB_CVC
-  ptr = trx_undo_update_rec_get_sys_cols(ptr, &trx_id, &roll_ptr, &info_bits, NULL
-																					,NULL, NULL, NULL, NULL);
+  ptr = trx_undo_update_rec_get_sys_cols(ptr, &trx_id, &roll_ptr, &info_bits
+			                                   , NULL);
 #else
   ptr = trx_undo_update_rec_get_sys_cols(ptr, &trx_id, &roll_ptr, &info_bits);
 #endif

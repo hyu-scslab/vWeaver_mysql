@@ -846,16 +846,7 @@ void rec_init_offsets_comp_ordinary(
     rec_offs_base(offsets)[i + 1] = len;
   } while (++i < rec_offs_n_fields(offsets));
 
-#ifdef SCSLAB_CVC
-	if(rec_is_user_record(rec, index)) {
-		*rec_offs_base(offsets) = (rec - (lens + 1) + CUR_VRIDGE_LEN) 
-																| REC_OFFS_COMPACT | any_ext;
-	} else {
-		*rec_offs_base(offsets) = (rec - (lens + 1)) | REC_OFFS_COMPACT | any_ext;
-	}
-#else
   *rec_offs_base(offsets) = (rec - (lens + 1)) | REC_OFFS_COMPACT | any_ext;
-#endif
 }
 
 /** The following function is used to test whether the data offsets in the
