@@ -156,15 +156,16 @@ typedef ib_id_t undo_no_t;
 #define NON_USER_RECORD 0
 #define VRIDGE_NULL	0
 #define GROUND_LEVEL 1
+#define VRIDGE_ADDITIONAL_SPACE_IN_UNDO 40
 
 typedef byte cvc_level_t;
 typedef struct __cvc_cache_info__
 {
-	cvc_level_t level, vridge_level;
-	trx_id_t vridge_trx_id; 
-	trx_id_t vridge_next_trx_id; 
-	trx_id_t next_trx_id;
-	roll_ptr_t vridge_roll_ptr;
+  cvc_level_t level, vridge_level;
+  trx_id_t vridge_trx_id; 
+  trx_id_t vridge_next_trx_id; 
+  trx_id_t next_trx_id;
+  roll_ptr_t vridge_roll_ptr;
 } cvc_info_cache;
 #endif
 

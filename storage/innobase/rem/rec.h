@@ -711,17 +711,17 @@ uint16_t rec_init_null_and_len_comp(const rec_t *rec, const dict_index_t *index,
 #ifdef SCSLAB_CVC
 UNIV_INLINE
 bool rec_is_user_record(
-		const rec_t*						rec,
-		const dict_index_t*			index)
+  const rec_t*            rec,
+  const dict_index_t*     index)
 {
-	const ulint rec_status = rec_get_status(rec);
+  const ulint rec_status = rec_get_status(rec);
 
-	if(!strcmp(index->name, "PRIMARY")
-			&& index->space != dict_sys_t::s_space_id
-			&& rec_status == REC_STATUS_ORDINARY) {
-		return true;
-	}
-	return false;
+  if(!strcmp(index->name, "PRIMARY")
+      && index->space != dict_sys_t::s_space_id
+      && rec_status == REC_STATUS_ORDINARY) {
+      return true;
+  }
+  return false;
 }
 #endif
 

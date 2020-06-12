@@ -64,65 +64,65 @@ class Spatial_reference_system;
 #ifdef SCSLAB_CVC
 
 trx_undo_rec_t * 
-		trx_undo_get_undo_rec_in_vridge_list(roll_ptr_t roll_ptr,
-																				 bool is_temp,
-																				 mtr_t * mtr,
-																				 mem_heap_t ** pheap
-																				 )
+  trx_undo_get_undo_rec_in_vridge_list(roll_ptr_t roll_ptr,
+                                       bool is_temp,
+                                       mtr_t * mtr,
+                                      mem_heap_t ** pheap)
 {
-		ibool is_insert;
-		ulint rseg_id, offset;
-		page_no_t page_no;
-		page_t * undo_page;
-		space_id_t space_id;
-		bool found;
+  ibool is_insert;
+  ulint rseg_id, offset;
+  page_no_t page_no;
+  page_t * undo_page;
+  space_id_t space_id;
+  bool found;
 
-		trx_undo_decode_roll_ptr(roll_ptr, &is_insert, &rseg_id, 
-														 &page_no, &offset);
-		space_id = trx_rseg_id_to_space_id(rseg_id, is_temp);
+  trx_undo_decode_roll_ptr(roll_ptr, &is_insert, &rseg_id, 
+                           &page_no, &offset);
+  space_id = trx_rseg_id_to_space_id(rseg_id, is_temp);
 
-		const page_size_t& page_size = fil_space_get_page_size(space_id, &found);
-		ut_ad(found);
+  const page_size_t& page_size = fil_space_get_page_size(space_id, &found);
+  ut_ad(found);
 
-		mtr_start(mtr);
+  mtr_start(mtr);
 
-		undo_page = trx_undo_page_get_s_latched(page_id_t(space_id, page_no),
+  undo_page = trx_undo_page_get_s_latched(page_id_t(space_id, page_no),
 																								page_size, mtr);
-		/*
-		undo_page = buf_block_get_frame(buf_page_get_with_no_latch(
-																			page_id_t(space_id, page_no),
-																			page_size , mtr));
-		*/
-		mtr_commit(mtr);
-		return trx_undo_rec_copy(undo_page + offset, *pheap);
+  /*
+  undo_page = buf_block_get_frame(buf_page_get_with_no_latch(
+                                 page_id_t(space_id, page_no),
+                                 page_size , mtr));
+  */
+  mtr_commit(mtr);
+  return trx_undo_rec_copy(undo_page + offset, *pheap);
 }
 
 
 void trx_undo_get_prev_undo_info(roll_ptr_t roll_ptr, 
 		                             trx_id_t * p_prev_trx_id,
                                  roll_ptr_t * p_prev_roll_ptr,
-                                 cvc_info_cache * next_undo_info) {
+                                 cvc_info_cache * next_undo_info) 
+{
   ulint type, info_bits;
   ulint cmpl_info;
   bool dummy_extern;
-	undo_no_t undo_no;
-	table_id_t table_id;
-	type_cmpl_t type_cmpl;
+  undo_no_t undo_no;
+  table_id_t table_id;
+  type_cmpl_t type_cmpl;
   trx_undo_rec_t * undo_rec;
-	mem_heap_t * heap = mem_heap_create(1024);
-	mtr_t mtr;
-	byte * ptr;
+  mem_heap_t * heap = mem_heap_create(1024);
+  mtr_t mtr;
+  byte * ptr;
 
   if (trx_undo_roll_ptr_is_insert(roll_ptr)) {
     next_undo_info->level = 1;
-    next_undo_info->vridge_level = 0;
+    next_undo_info->vridge_level = 0; 
   } else { 
     undo_rec = trx_undo_get_undo_rec_in_vridge_list(roll_ptr, false, 
                                                     &mtr, &heap);
     ptr = trx_undo_rec_get_pars(undo_rec, &type, &cmpl_info, &dummy_extern,
-				                        &undo_no, &table_id, type_cmpl);
-		ptr = trx_undo_update_rec_get_sys_cols(ptr, p_prev_trx_id, p_prev_roll_ptr,
-																					 &info_bits, next_undo_info);
+                                &undo_no, &table_id, type_cmpl);
+    ptr = trx_undo_update_rec_get_sys_cols(ptr, p_prev_trx_id, p_prev_roll_ptr,
+                                           &info_bits, next_undo_info);
     mem_heap_free(heap);
   }
 }
@@ -1239,33 +1239,33 @@ static byte *trx_undo_report_blob_update(page_t *undo_page, dict_index_t *index,
 #ifdef SCSLAB_CVC
 
 bool trx_get_next_same_level_ridge(
-		dict_index_t * index,
-		cvc_level_t new_level,
-		cvc_info_cache * next_undo_info)
+  dict_index_t * index,
+  cvc_level_t new_level,
+  cvc_info_cache * next_undo_info)
 {
-	trx_id_t trx_id;
-	roll_ptr_t roll_ptr;
-	cvc_info_cache found_info;
+  trx_id_t trx_id;
+  roll_ptr_t roll_ptr;
+  cvc_info_cache found_info;
 
-	found_info.vridge_roll_ptr = next_undo_info->vridge_roll_ptr;
+  found_info.vridge_roll_ptr = next_undo_info->vridge_roll_ptr;
 
-	while (!trx_undo_roll_ptr_is_insert(found_info.vridge_roll_ptr)) {
-	  trx_undo_get_prev_undo_info(found_info.vridge_roll_ptr, &trx_id,
+  while (!trx_undo_roll_ptr_is_insert(found_info.vridge_roll_ptr)) {
+    trx_undo_get_prev_undo_info(found_info.vridge_roll_ptr, &trx_id,
                                 &roll_ptr, &found_info);
 
-		if ((ulint)found_info.vridge_level >= (ulint)new_level) {
-			next_undo_info->vridge_level = found_info.vridge_level;
-			next_undo_info->vridge_trx_id = found_info.vridge_trx_id;
-			next_undo_info->vridge_roll_ptr = found_info.vridge_roll_ptr;
-			next_undo_info->vridge_next_trx_id = found_info.vridge_next_trx_id;
-			return true;
-		}
+    if ((ulint)found_info.vridge_level >= (ulint)new_level) {
+      next_undo_info->vridge_level = found_info.vridge_level;
+      next_undo_info->vridge_trx_id = found_info.vridge_trx_id;
+      next_undo_info->vridge_roll_ptr = found_info.vridge_roll_ptr;
+      next_undo_info->vridge_next_trx_id = found_info.vridge_next_trx_id;
+      return true;
+    }
 	
-		if (!found_info.vridge_level) {
-			return false;
-		}
-	}
-	return false;
+    if (!found_info.vridge_level) {
+      return false;
+    }
+  }
+  return false;
 }
 
 
@@ -1312,7 +1312,7 @@ static ulint trx_undo_page_report_modify(
   byte ext_buf[REC_VERSION_56_MAX_INDEX_COL_LEN + BTR_EXTERN_FIELD_REF_SIZE];
   bool first_v_col = true;
 #ifdef SCSLAB_CVC
-	bool is_user_record = rec_is_user_record(rec, index);
+  bool is_user_record = rec_is_user_record(rec, index);
 #endif
 
   ut_a(index->is_clustered());
@@ -1334,7 +1334,7 @@ static ulint trx_undo_page_report_modify(
   ut_ad(first_free <= UNIV_PAGE_SIZE);
 
 #ifdef SCSLAB_CVC
-  if (trx_undo_left(undo_page, ptr) < 50 + 100) {
+  if (trx_undo_left(undo_page, ptr) < 50 + VRIDGE_ADDITIONAL_SPACE_IN_UNDO) {
 #else
   if (trx_undo_left(undo_page, ptr) < 50) {
 #endif
@@ -1407,23 +1407,23 @@ static ulint trx_undo_page_report_modify(
 
 
 #ifdef SCSLAB_CVC
-	roll_ptr_t roll_ptr = trx_read_roll_ptr(field);
+  roll_ptr_t roll_ptr = trx_read_roll_ptr(field);
 
-	if (is_user_record) {
+  if (is_user_record) {
 
-		*ptr++ = undo_info->level;
-		*ptr++ = undo_info->vridge_level;
-		ptr += mach_u64_write_compressed(ptr, undo_info->vridge_trx_id);
-		ptr += mach_u64_write_compressed(ptr, undo_info->vridge_roll_ptr);
-		ptr += mach_u64_write_compressed(ptr, undo_info->next_trx_id);
-		ptr += mach_u64_write_compressed(ptr, undo_info->vridge_next_trx_id);
-		ptr += mach_u64_write_compressed(ptr, trx_id);
-		ptr += mach_u64_write_compressed(ptr, roll_ptr);
-	} else {
-		*ptr++ = NON_USER_RECORD;
-		ptr += mach_u64_write_compressed(ptr, trx_id);
-		ptr += mach_u64_write_compressed(ptr, roll_ptr);
-	} 
+    *ptr++ = undo_info->level;
+    *ptr++ = undo_info->vridge_level;
+    ptr += mach_u64_write_compressed(ptr, undo_info->vridge_trx_id);
+    ptr += mach_u64_write_compressed(ptr, undo_info->vridge_roll_ptr);
+    ptr += mach_u64_write_compressed(ptr, undo_info->next_trx_id);
+    ptr += mach_u64_write_compressed(ptr, undo_info->vridge_next_trx_id);
+    ptr += mach_u64_write_compressed(ptr, trx_id);
+    ptr += mach_u64_write_compressed(ptr, roll_ptr);
+  } else {
+    *ptr++ = NON_USER_RECORD;
+    ptr += mach_u64_write_compressed(ptr, trx_id);
+    ptr += mach_u64_write_compressed(ptr, roll_ptr);
+  } 
 	
 #else 
   ptr += mach_u64_write_compressed(ptr, trx_read_roll_ptr(field));
@@ -1463,160 +1463,159 @@ static ulint trx_undo_page_report_modify(
 
   if (update) {
 
-	#ifdef SCSLAB_CVC
-		ulint j = 0, pos = 0;
-		upd_field_t * fld;
-		bool n_field_zero_flags = false;
+#ifdef SCSLAB_CVC
+    ulint j = 0, pos = 0;
+    upd_field_t * fld;
+    bool n_field_zero_flags = false;
 
-		if(is_user_record) {
+    if(is_user_record) {
+      if (trx_undo_left(undo_page, ptr) < 5) {
+        return 0;
+      }
 
-			if (trx_undo_left(undo_page, ptr) < 5) {
-				return 0;
-			}
+      ulint n_fields = rec_get_n_fields(rec, index);
+      ulint n_updated = upd_get_n_fields(update);
+      if(n_updated) {
+        fld = upd_get_nth_field(update, j);
+        pos = fld->field_no;
+      } else {
+        n_field_zero_flags = true;
+      }
 
-			ulint n_fields = rec_get_n_fields(rec, index);
-			ulint n_updated = upd_get_n_fields(update);
-			if(n_updated) {
-				fld = upd_get_nth_field(update, j);
-				pos = fld->field_no;
-			} else {
-				n_field_zero_flags = true;
-			}
-
-			if (dict_index_is_online_ddl(index) && index->table->n_v_cols > 0) {
-			}
+      if (dict_index_is_online_ddl(index) && index->table->n_v_cols > 0) {
+      }
 
 			ptr += mach_write_compressed(ptr, n_fields);
 
-			for (i = 0 ; i < rec_get_n_fields(rec, index); i++) {
-				if (!n_field_zero_flags && i == pos) {
-					bool is_virtual = upd_fld_is_virtual_col(fld);
-					bool is_multi_val = upd_fld_is_multi_value_col(fld);
-					//ulint max_v_log_len = 0;					
+      for (i = 0 ; i < rec_get_n_fields(rec, index); i++) {
+        if (!n_field_zero_flags && i == pos) {
+          bool is_virtual = upd_fld_is_virtual_col(fld);
+          bool is_multi_val = upd_fld_is_multi_value_col(fld);
+          //ulint max_v_log_len = 0;					
 
-					if (trx_undo_left(undo_page, ptr) < 5) {
-						return 0;
-					}
+          if (trx_undo_left(undo_page, ptr) < 5) {
+            return 0;
+          }
 
-					if (is_virtual) {
-					}
+          if (is_virtual) {
+          }
 					
-					ptr += mach_write_compressed(ptr, pos);
+          ptr += mach_write_compressed(ptr, pos);
 
-					if (is_virtual) {
-					} else {
-						field = rec_get_nth_field_instant(rec, offsets, pos, index, &flen);
-					}
+          if (is_virtual) {
+          } else {
+            field = rec_get_nth_field_instant(rec, offsets, pos, index, &flen);
+          }
 
-					if (trx_undo_left(undo_page, ptr) < 15) {
-						return 0;
-					}
+          if (trx_undo_left(undo_page, ptr) < 15) {
+            return 0;
+          }
 
-					if (!is_virtual && rec_offs_nth_extern(offsets, pos)) {
-					} else if (!is_multi_val) {
-						ptr += mach_write_compressed(ptr, flen);
-					}
+          if (!is_virtual && rec_offs_nth_extern(offsets, pos)) {
+          } else if (!is_multi_val) {
+            ptr += mach_write_compressed(ptr, flen);
+          }
 
-					if (is_multi_val) {
-					} else if (flen != UNIV_SQL_NULL) {
-						if (trx_undo_left(undo_page, ptr) < flen) {
-							return 0;
-						}
+          if (is_multi_val) {
+          } else if (flen != UNIV_SQL_NULL) {
+            if (trx_undo_left(undo_page, ptr) < flen) {
+              return 0;
+            }
 
-						ut_memcpy(ptr, field, flen);
-						ptr += flen;
+            ut_memcpy(ptr, field, flen);
+            ptr += flen;
 
-						if (!is_virtual && rec_offs_nth_extern(offsets, pos)) {
-						}
-					}
+            if (!is_virtual && rec_offs_nth_extern(offsets, pos)) {
+            }
+          }
 
-					if (is_virtual) {
-					}
+          if (is_virtual) {
+          }
 
-					j++;
-					if (j < upd_get_n_fields(update)) {
-						fld = upd_get_nth_field(update, j);
-						pos = fld->field_no;
-					}
-				} else {
-					bool is_fld_virtual = false;
-					bool is_fld_multi_val = false;
-					//ulint max_v_log_len = 0;
+          j++;
+          if (j < upd_get_n_fields(update)) {
+            fld = upd_get_nth_field(update, j);
+            pos = fld->field_no;
+          }
+        } else {
+          bool is_fld_virtual = false;
+          bool is_fld_multi_val = false;
+          //ulint max_v_log_len = 0;
 
-					if (trx_undo_left(undo_page, ptr) < 5) {
-						return 0;
-					}
+          if (trx_undo_left(undo_page, ptr) < 5) {
+            return 0;
+          }
 
-					if(is_fld_virtual) {
-					}
+          if(is_fld_virtual) {
+          }
 
-					ptr += mach_write_compressed(ptr, i);
+          ptr += mach_write_compressed(ptr, i);
 
-					if(is_fld_virtual) {
-					} else {
-						field = rec_get_nth_field_instant(rec, offsets, i, index, &flen);
-					}
+          if(is_fld_virtual) {
+          } else {
+            field = rec_get_nth_field_instant(rec, offsets, i, index, &flen);
+          }
 
-					if (trx_undo_left(undo_page, ptr) < 15) {
-						return 0;
-					}
+          if (trx_undo_left(undo_page, ptr) < 15) {
+            return 0;
+          }
 
-					if(!is_fld_virtual && rec_offs_nth_extern(offsets, i)) {
-					} else if(!is_fld_multi_val) {
-						ptr += mach_write_compressed(ptr, flen);
-					}
+          if(!is_fld_virtual && rec_offs_nth_extern(offsets, i)) {
+          } else if(!is_fld_multi_val) {
+            ptr += mach_write_compressed(ptr, flen);
+          }
 
-					if (is_fld_multi_val) {
-					} else if (flen != UNIV_SQL_NULL) {
-						if (trx_undo_left(undo_page, ptr) < flen) {
-							return 0;
-						}
+          if (is_fld_multi_val) {
+          } else if (flen != UNIV_SQL_NULL) {
+            if (trx_undo_left(undo_page, ptr) < flen) {
+              return 0;
+            }
 
-						ut_memcpy(ptr, field, flen);
-						ptr += flen;
+            ut_memcpy(ptr, field, flen);
+            ptr += flen;
 
-						if (!is_fld_virtual && rec_offs_nth_extern(offsets, i)) {
-						}
-					}
+            if (!is_fld_virtual && rec_offs_nth_extern(offsets, i)) {
+            }
+          }
 
-					if (is_fld_virtual) {
-					} 
-				}
-			}
-		} else {
-			if (trx_undo_left(undo_page, ptr) < 5) {
-			return 0;
-			}
+          if (is_fld_virtual) {
+          } 
+        }
+      }
+    } else {
+      if (trx_undo_left(undo_page, ptr) < 5) {
+        return 0;
+      }
 
-			ulint n_updated = upd_get_n_fields(update);
+      ulint n_updated = upd_get_n_fields(update);
 
-			/* If this is an online update while an inplace alter table
-			is in progress and the table has virtual column, we will
-			need to double check if there are any non-indexed columns
-			being registered in update vector in case they will be indexed
-			in new table */
-			if (dict_index_is_online_ddl(index) && index->table->n_v_cols > 0) {
-				for (i = 0; i < upd_get_n_fields(update); i++) {
-					upd_field_t *fld = upd_get_nth_field(update, i);
-					ulint pos = fld->field_no;
+      /* If this is an online update while an inplace alter table
+      is in progress and the table has virtual column, we will
+      need to double check if there are any non-indexed columns
+      being registered in update vector in case they will be indexed
+      in new table */
+      if (dict_index_is_online_ddl(index) && index->table->n_v_cols > 0) {
+        for (i = 0; i < upd_get_n_fields(update); i++) {
+          upd_field_t *fld = upd_get_nth_field(update, i);
+          ulint pos = fld->field_no;
 
 					/* These columns must not have an index
-					on them */
-					if (upd_fld_is_virtual_col(fld) &&
-						  dict_table_get_nth_v_col(table, pos)->v_indexes->empty()) {
-						n_updated--;
-					}
-				}
-			}
+          on them */
+          if (upd_fld_is_virtual_col(fld) &&
+              dict_table_get_nth_v_col(table, pos)->v_indexes->empty()) {
+            n_updated--;
+          }
+        }
+      }
 
 			ptr += mach_write_compressed(ptr, n_updated);
 
-			for (i = 0; i < upd_get_n_fields(update); i++) {
-				upd_field_t *fld = upd_get_nth_field(update, i);
+      for (i = 0; i < upd_get_n_fields(update); i++) {
+        upd_field_t *fld = upd_get_nth_field(update, i);
 
-				bool is_virtual = upd_fld_is_virtual_col(fld);
+        bool is_virtual = upd_fld_is_virtual_col(fld); 
 				bool is_multi_val = upd_fld_is_multi_value_col(fld);
-				ulint max_v_log_len = 0;
+        ulint max_v_log_len = 0;
 
 				ulint pos = fld->field_no;
 
@@ -1731,7 +1730,8 @@ static ulint trx_undo_page_report_modify(
 					}
 
 					if (is_multi_val) {
-						bool suc = trx_undo_store_multi_value(undo_page, &fld->new_val, &ptr);
+						bool suc = trx_undo_store_multi_value(undo_page, &fld->new_val,
+								                                  &ptr);
 						if (!suc) {
 							return 0;
 						}
@@ -2133,7 +2133,7 @@ byte *trx_undo_update_rec_get_sys_cols(
     roll_ptr_t *roll_ptr,							/*!< out: roll ptr */
     ulint *info_bits									/*!< out: info_bits */
 #ifdef SCSLAB_CVC
-		, cvc_info_cache * next_undo_info 
+    , cvc_info_cache * next_undo_info 
 #endif	
 		)     /*!< out: info bits state */
 {
@@ -3133,10 +3133,10 @@ bool trx_undo_prev_version_build_in_vridge(
   ut_ad(!index->table->skip_alter_undo);
 
 	if (is_user_record) {
-		ptr = trx_get_undo_rec_following_ridge(index, rec, offsets, heap
-																						, rec_roll_ptr
-																						, rec_trx_id, view, &trx_id
-																						, &roll_ptr, &type, &info_bits);
+		ptr = trx_get_undo_rec_following_ridge(index, rec, offsets, heap,
+																					 rec_roll_ptr, rec_trx_id, view, 
+																					 &trx_id, &roll_ptr, &type, 
+																					 &info_bits);
 
 		if(!ptr) {
 			return true;

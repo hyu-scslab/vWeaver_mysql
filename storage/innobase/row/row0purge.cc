@@ -859,8 +859,8 @@ static bool row_purge_parse_undo_rec(purge_node_t *node,
   }
 
 #ifdef SCSLAB_CVC
-  ptr = trx_undo_update_rec_get_sys_cols(ptr, &trx_id, &roll_ptr, &info_bits
-																				 , NULL);
+  ptr = trx_undo_update_rec_get_sys_cols(ptr, &trx_id, &roll_ptr, &info_bits,
+                                         NULL);
 #else
   ptr = trx_undo_update_rec_get_sys_cols(ptr, &trx_id, &roll_ptr, &info_bits);
 #endif

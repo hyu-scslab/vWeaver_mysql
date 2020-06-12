@@ -113,7 +113,7 @@ byte *trx_undo_update_rec_get_sys_cols(
     roll_ptr_t *roll_ptr, /*!< out: roll ptr */
     ulint *info_bits
 #ifdef SCSLAB_CVC
-		,cvc_info_cache * next_undo_info
+    ,cvc_info_cache * next_undo_info
 #endif	
 		);    /*!< out: info bits state */
 
@@ -422,22 +422,22 @@ const byte *trx_undo_rec_get_multi_value(const byte *ptr, dfield_t *field,
                                         mem_heap_t *heap);
 #ifdef SCSLAB_CVC
 byte *trx_undo_rec_get_pars(
-    trx_undo_rec_t *undo_rec, /*!< in: undo log record */
-    ulint *type,              /*!< out: undo record type:
+  trx_undo_rec_t *undo_rec, /*!< in: undo log record */
+  ulint *type,              /*!< out: undo record type:
                               TRX_UNDO_INSERT_REC, ... */
-    ulint *cmpl_info,         /*!< out: compiler info, relevant only
+  ulint *cmpl_info,         /*!< out: compiler info, relevant only
                               for update type records */
-    bool *updated_extern,     /*!< out: true if we updated an
+  bool *updated_extern,     /*!< out: true if we updated an
                               externally stored fild */
-    undo_no_t *undo_no,       /*!< out: undo log record number */
-    table_id_t *table_id,     /*!< out: table id */
-    type_cmpl_t &type_cmpl);  /*!< out: type compilation info */
+  undo_no_t *undo_no,       /*!< out: undo log record number */
+  table_id_t *table_id,     /*!< out: table id */
+  type_cmpl_t &type_cmpl);  /*!< out: type compilation info */
 
 
 bool trx_get_next_same_level_ridge(
-		dict_index_t * index,
-		cvc_level_t new_level,
-		cvc_info_cache * next_undo_info);
+  dict_index_t * index,
+  cvc_level_t new_level,
+  cvc_info_cache * next_undo_info);
 
 byte* trx_get_undo_rec_following_ridge(
   const dict_index_t * index,
