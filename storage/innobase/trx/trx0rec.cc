@@ -86,7 +86,7 @@ trx_undo_rec_t *
   mtr_start(mtr);
 
   undo_page = trx_undo_page_get_s_latched(page_id_t(space_id, page_no),
-																								page_size, mtr);
+                                                    page_size, mtr);
   /*
   undo_page = buf_block_get_frame(buf_page_get_with_no_latch(
                                  page_id_t(space_id, page_no),
@@ -98,7 +98,7 @@ trx_undo_rec_t *
 
 
 void trx_undo_get_prev_undo_info(roll_ptr_t roll_ptr, 
-		                             trx_id_t * p_prev_trx_id,
+                                 trx_id_t * p_prev_trx_id,
                                  roll_ptr_t * p_prev_roll_ptr,
                                  cvc_info_cache * next_undo_info) 
 {
@@ -1260,7 +1260,6 @@ bool trx_get_next_same_level_ridge(
       next_undo_info->vridge_next_trx_id = found_info.vridge_next_trx_id;
       return true;
     }
-	
     if (!found_info.vridge_level) {
       return false;
     }
@@ -1424,7 +1423,6 @@ static ulint trx_undo_page_report_modify(
     ptr += mach_u64_write_compressed(ptr, trx_id);
     ptr += mach_u64_write_compressed(ptr, roll_ptr);
   } 
-	
 #else 
   ptr += mach_u64_write_compressed(ptr, trx_read_roll_ptr(field));
 #endif
@@ -1485,13 +1483,13 @@ static ulint trx_undo_page_report_modify(
       if (dict_index_is_online_ddl(index) && index->table->n_v_cols > 0) {
       }
 
-			ptr += mach_write_compressed(ptr, n_fields);
+      ptr += mach_write_compressed(ptr, n_fields);
 
       for (i = 0 ; i < rec_get_n_fields(rec, index); i++) {
         if (!n_field_zero_flags && i == pos) {
           bool is_virtual = upd_fld_is_virtual_col(fld);
           bool is_multi_val = upd_fld_is_multi_value_col(fld);
-          //ulint max_v_log_len = 0;					
+          //ulint max_v_log_len = 0;
 
           if (trx_undo_left(undo_page, ptr) < 5) {
             return 0;
@@ -1499,7 +1497,6 @@ static ulint trx_undo_page_report_modify(
 
           if (is_virtual) {
           }
-					
           ptr += mach_write_compressed(ptr, pos);
 
           if (is_virtual) {
@@ -1599,7 +1596,7 @@ static ulint trx_undo_page_report_modify(
           upd_field_t *fld = upd_get_nth_field(update, i);
           ulint pos = fld->field_no;
 
-					/* These columns must not have an index
+          /* These columns must not have an index
           on them */
           if (upd_fld_is_virtual_col(fld) &&
               dict_table_get_nth_v_col(table, pos)->v_indexes->empty()) {
@@ -1608,149 +1605,150 @@ static ulint trx_undo_page_report_modify(
         }
       }
 
-			ptr += mach_write_compressed(ptr, n_updated);
+      ptr += mach_write_compressed(ptr, n_updated);
 
       for (i = 0; i < upd_get_n_fields(update); i++) {
         upd_field_t *fld = upd_get_nth_field(update, i);
 
         bool is_virtual = upd_fld_is_virtual_col(fld); 
-				bool is_multi_val = upd_fld_is_multi_value_col(fld);
+        bool is_multi_val = upd_fld_is_multi_value_col(fld);
         ulint max_v_log_len = 0;
 
-				ulint pos = fld->field_no;
+        ulint pos = fld->field_no;
 
       /* Write field number to undo log */
-				if (trx_undo_left(undo_page, ptr) < 5) {
-					return 0;
-				}
+        if (trx_undo_left(undo_page, ptr) < 5) {
+          return 0;
+        }
 
-				if (is_virtual) {
-					/* Skip the non-indexed column, during
-					an online alter table */
-					if (dict_index_is_online_ddl(index) &&
-						dict_table_get_nth_v_col(table, pos)->v_indexes->empty()) {
-						continue;
-					}
+        if (is_virtual) {
+          /* Skip the non-indexed column, during
+          an online alter table */
+          if (dict_index_is_online_ddl(index) &&
+            dict_table_get_nth_v_col(table, pos)->v_indexes->empty()) {
+            continue;
+          }
 
-					/* add REC_MAX_N_FIELDS to mark this
-					is a virtual col */
-					pos += REC_MAX_N_FIELDS;
-				}
+          /* add REC_MAX_N_FIELDS to mark this
+          is a virtual col */
+          pos += REC_MAX_N_FIELDS;
+        }
 
-				ptr += mach_write_compressed(ptr, pos);
+        ptr += mach_write_compressed(ptr, pos);
 
-				/* Save the old value of field */
-				if (is_virtual) {
-					ut_ad(fld->field_no < table->n_v_def);
+        /* Save the old value of field */
+        if (is_virtual) {
+          ut_ad(fld->field_no < table->n_v_def);
 
-					ptr = trx_undo_log_v_idx(undo_page, table, fld->field_no, ptr,
+          ptr = trx_undo_log_v_idx(undo_page, table, fld->field_no, ptr,
                                  first_v_col);
-					if (ptr == NULL) {
-						return 0;
-					}
-					first_v_col = false;
+          if (ptr == NULL) {
+            return 0;
+          }
+          first_v_col = false;
 
-					max_v_log_len = dict_max_v_field_len_store_undo(table, fld->field_no);
+          max_v_log_len = dict_max_v_field_len_store_undo(table, fld->field_no);
 
-					field = static_cast<byte *>(fld->old_v_val->data);
-					flen = fld->old_v_val->len;
+          field = static_cast<byte *>(fld->old_v_val->data);
+          flen = fld->old_v_val->len;
 
-					/* Only log sufficient bytes for index
-					record update */
-					if (flen != UNIV_SQL_NULL) {
-						flen = ut_min(flen, max_v_log_len);
-					}
-				} else {
-					field = rec_get_nth_field_instant(rec, offsets, pos, index, &flen);
-				}
+          /* Only log sufficient bytes for index
+          record update */
+          if (flen != UNIV_SQL_NULL) {
+            flen = ut_min(flen, max_v_log_len);
+          }
+        } else {
+          field = rec_get_nth_field_instant(rec, offsets, pos, index, &flen);
+        }
 
-				if (trx_undo_left(undo_page, ptr) < 15) {
-					return 0;
-				}
+        if (trx_undo_left(undo_page, ptr) < 15) {
+          return 0;
+        }
 
-				if (!is_virtual && rec_offs_nth_extern(offsets, pos)) {
-					ut_ad(!is_multi_val);
-					const dict_col_t *col = index->get_col(pos);
-					ulint prefix_len = dict_max_field_len_store_undo(table, col);
+        if (!is_virtual && rec_offs_nth_extern(offsets, pos)) {
+          ut_ad(!is_multi_val);
+          const dict_col_t *col = index->get_col(pos);
+          ulint prefix_len = dict_max_field_len_store_undo(table, col);
 
-					ut_ad(prefix_len + BTR_EXTERN_FIELD_REF_SIZE <= sizeof ext_buf);
+          ut_ad(prefix_len + BTR_EXTERN_FIELD_REF_SIZE <= sizeof ext_buf);
 
-					ptr = trx_undo_page_report_modify_ext(
-						  trx, index, ptr,
-							col->ord_part && !ignore_prefix &&
-								      flen < REC_ANTELOPE_MAX_INDEX_COL_LEN
-									? ext_buf
-									: NULL,
-							prefix_len, dict_table_page_size(table), &field, &flen,
-							dict_table_is_sdi(table->id), SPATIAL_UNKNOWN);
+          ptr = trx_undo_page_report_modify_ext(
+            trx, index, ptr,
+            col->ord_part && !ignore_prefix &&
+            flen < REC_ANTELOPE_MAX_INDEX_COL_LEN
+                ? ext_buf
+                : NULL,
+                prefix_len, dict_table_page_size(table), &field, &flen,
+            dict_table_is_sdi(table->id), SPATIAL_UNKNOWN);
 
-					/* Notify purge that it eventually has to
-					free the old externally stored field */
+          /* Notify purge that it eventually has to
+          free the old externally stored field */
 
-					undo_ptr->update_undo->del_marks = TRUE;
+          undo_ptr->update_undo->del_marks = TRUE;
 
-					*type_cmpl_ptr |= TRX_UNDO_UPD_EXTERN;
-				} else if (!is_multi_val) {
-					ptr += mach_write_compressed(ptr, flen);
-				}
+          *type_cmpl_ptr |= TRX_UNDO_UPD_EXTERN;
+        } else if (!is_multi_val) {
+          ptr += mach_write_compressed(ptr, flen);
+        }
 
-				if (is_multi_val) {
-					bool suc = trx_undo_store_multi_value(undo_page, fld->old_v_val, &ptr);
-					if (!suc) {
-						return 0;
-					}
-				} else if (flen != UNIV_SQL_NULL) {
-					if (trx_undo_left(undo_page, ptr) < flen) {
-						return 0;
-					}
+        if (is_multi_val) {
+          bool suc = trx_undo_store_multi_value(undo_page, fld->old_v_val,
+                                                &ptr);
+          if (!suc) {
+            return 0;
+          }
+        } else if (flen != UNIV_SQL_NULL) {
+          if (trx_undo_left(undo_page, ptr) < flen) {
+            return 0;
+          }
 
-					ut_memcpy(ptr, field, flen);
-					ptr += flen;
+          ut_memcpy(ptr, field, flen);
+          ptr += flen;
 
-					if (!is_virtual && rec_offs_nth_extern(offsets, pos)) {
-						ptr = trx_undo_report_blob_update(undo_page, index, ptr, field, flen,
-							                                update, fld, mtr);
+          if (!is_virtual && rec_offs_nth_extern(offsets, pos)) {
+            ptr = trx_undo_report_blob_update(undo_page, index, ptr, field, 
+                                              flen, update, fld, mtr);
 
-						if (ptr == nullptr) {
-							return 0;
-						}
-					}
-				}
+            if (ptr == nullptr) {
+              return 0;
+            }
+          }
+        }
 
-				/* Also record the new value for virtual column */
-				if (is_virtual) {
-					field = static_cast<byte *>(fld->new_val.data);
-					flen = fld->new_val.len;
-					if (flen != UNIV_SQL_NULL) {
-						flen = ut_min(flen, max_v_log_len);
-					}
+        /* Also record the new value for virtual column */
+        if (is_virtual) {
+          field = static_cast<byte *>(fld->new_val.data);
+          flen = fld->new_val.len;
+          if (flen != UNIV_SQL_NULL) {
+            flen = ut_min(flen, max_v_log_len);
+          }
 
-					if (trx_undo_left(undo_page, ptr) < 15) {
-						return 0;
-					}
+          if (trx_undo_left(undo_page, ptr) < 15) {
+            return 0;
+          }
 
-					if (is_multi_val) {
-						bool suc = trx_undo_store_multi_value(undo_page, &fld->new_val,
-								                                  &ptr);
-						if (!suc) {
-							return 0;
-						}
-					}	else {
-						ptr += mach_write_compressed(ptr, flen);
+          if (is_multi_val) {
+            bool suc = trx_undo_store_multi_value(undo_page, &fld->new_val,
+                                                  &ptr);
+            if (!suc) {
+              return 0;
+            }
+          } else {
+            ptr += mach_write_compressed(ptr, flen);
 
-						if (flen != UNIV_SQL_NULL) {
-							if (trx_undo_left(undo_page, ptr) < flen) {
-							 return 0;
-							}
+            if (flen != UNIV_SQL_NULL) {
+              if (trx_undo_left(undo_page, ptr) < flen) {
+                return 0;
+              }
 
-							ut_memcpy(ptr, field, flen);
-							ptr += flen;
-						}
-					}
-				}
-			}
-		}
-	#else
+              ut_memcpy(ptr, field, flen);
+              ptr += flen;
+            }
+          }
+        }
+      }
+    }
+  #else
     if (trx_undo_left(undo_page, ptr) < 5) {
       return 0;
     }
@@ -2126,16 +2124,16 @@ static ulint trx_undo_page_report_modify(
  version.
  @return remaining part of undo log record after reading these values */
 byte *trx_undo_update_rec_get_sys_cols(
-    const byte *ptr,									/*!< in: remaining part of undo
-																							 log record after reading
-																							 general parameters */
-    trx_id_t *trx_id,									/*!< out: trx id */
-    roll_ptr_t *roll_ptr,							/*!< out: roll ptr */
-    ulint *info_bits									/*!< out: info_bits */
+    const byte *ptr,                  /*!< in: remaining part of undo
+                                               log record after reading
+                                               general parameters */
+    trx_id_t *trx_id,                 /*!< out: trx id */
+    roll_ptr_t *roll_ptr,             /*!< out: roll ptr */
+    ulint *info_bits                  /*!< out: info_bits */
 #ifdef SCSLAB_CVC
     , cvc_info_cache * next_undo_info 
-#endif	
-		)     /*!< out: info bits state */
+#endif
+    )     /*!< out: info bits state */
 {
   /* Read the state of the info bits */
   *info_bits = mach_read_from_1(ptr);
@@ -2146,31 +2144,31 @@ byte *trx_undo_update_rec_get_sys_cols(
 #ifndef SCSLAB_CVC
   *trx_id = mach_u64_read_next_compressed(&ptr);
 #else
-	byte is_user_record = mach_read_from_1(ptr);
+  byte is_user_record = mach_read_from_1(ptr);
 
-	if(next_undo_info) {
+  if(next_undo_info) {
     next_undo_info->level = is_user_record;
-	} 
+  } 
 
-	ptr += 1;
+  ptr += 1;
 
-	if (is_user_record) {
-		if (next_undo_info) {
-			next_undo_info->vridge_level = mach_read_from_1(ptr);
-			ptr += 1;
-			next_undo_info->vridge_trx_id = mach_u64_read_next_compressed(&ptr);
-			next_undo_info->vridge_roll_ptr = mach_u64_read_next_compressed(&ptr);
-			next_undo_info->next_trx_id = mach_u64_read_next_compressed(&ptr);
-			next_undo_info->vridge_next_trx_id = mach_u64_read_next_compressed(&ptr);
-		} else {
-			ptr += 1;
-			mach_u64_read_next_compressed(&ptr);
-			mach_u64_read_next_compressed(&ptr);
-			mach_u64_read_next_compressed(&ptr);
-			mach_u64_read_next_compressed(&ptr);
-		}
-	} 
-	*trx_id = mach_u64_read_next_compressed(&ptr);
+  if (is_user_record) {
+    if (next_undo_info) {
+      next_undo_info->vridge_level = mach_read_from_1(ptr);
+        ptr += 1;
+      next_undo_info->vridge_trx_id = mach_u64_read_next_compressed(&ptr);
+      next_undo_info->vridge_roll_ptr = mach_u64_read_next_compressed(&ptr);
+      next_undo_info->next_trx_id = mach_u64_read_next_compressed(&ptr);
+      next_undo_info->vridge_next_trx_id = mach_u64_read_next_compressed(&ptr);
+    } else {
+      ptr += 1;
+      mach_u64_read_next_compressed(&ptr);
+      mach_u64_read_next_compressed(&ptr);
+      mach_u64_read_next_compressed(&ptr);
+      mach_u64_read_next_compressed(&ptr);
+    }
+  } 
+  *trx_id = mach_u64_read_next_compressed(&ptr);
 #endif
   *roll_ptr = mach_u64_read_next_compressed(&ptr);
 
@@ -2608,7 +2606,7 @@ dberr_t trx_undo_report_row_operation(
   trx_undo_ptr_t *undo_ptr;
   mtr_t mtr;
   dberr_t err = DB_SUCCESS;
-	cvc_info_cache next_undo_info;
+  cvc_info_cache next_undo_info;
 #ifdef UNIV_DEBUG
   int loop_count = 0;
 #endif /* UNIV_DEBUG */
@@ -2655,51 +2653,50 @@ dberr_t trx_undo_report_row_operation(
       byte coin = rand() %2;
       roll_ptr_t rec_roll_ptr, prev_roll_ptr;
       trx_id_t rec_trx_id, prev_trx_id;
-			
       rec_roll_ptr = row_get_rec_roll_ptr(rec, index, offsets);
 
-			if (trx_undo_roll_ptr_is_insert(rec_roll_ptr)) {
-				rec_roll_ptr = VRIDGE_NULL;
-				rec_trx_id = VRIDGE_NULL;
-				prev_trx_id =  VRIDGE_NULL;
-				prev_roll_ptr = VRIDGE_NULL;
-				next_undo_info.level = VRIDGE_NULL;
-				next_undo_info.vridge_level = VRIDGE_NULL;
-			} else {
-				trx_undo_get_prev_undo_info(rec_roll_ptr, &prev_trx_id,
-																		&prev_roll_ptr, &next_undo_info);
-				rec_trx_id = trx_read_trx_id(rec_get_nth_field(rec, offsets,
-																					index->get_sys_col_pos(DATA_TRX_ID),
-																					&flen));
-			}
-			
-			if (coin) {
-				next_undo_info.level++;
-				if (next_undo_info.level <= next_undo_info.vridge_level) {
-					next_undo_info.next_trx_id = prev_trx_id;
-				} else {
+      if (trx_undo_roll_ptr_is_insert(rec_roll_ptr)) {
+        rec_roll_ptr = VRIDGE_NULL;
+        rec_trx_id = VRIDGE_NULL;
+        prev_trx_id =  VRIDGE_NULL;
+        prev_roll_ptr = VRIDGE_NULL;
+        next_undo_info.level = VRIDGE_NULL;
+        next_undo_info.vridge_level = VRIDGE_NULL;
+      } else {
+        trx_undo_get_prev_undo_info(rec_roll_ptr, &prev_trx_id,
+                                    &prev_roll_ptr, &next_undo_info);
+        rec_trx_id = trx_read_trx_id(rec_get_nth_field(rec, offsets,
+                                     index->get_sys_col_pos(DATA_TRX_ID),
+                                     &flen));
+      }
+
+      if (coin) {
+        next_undo_info.level++;
+        if (next_undo_info.level <= next_undo_info.vridge_level) {
+          next_undo_info.next_trx_id = prev_trx_id;
+        } else {
           if (next_undo_info.vridge_level 
-							&& trx_get_next_same_level_ridge(index, next_undo_info.level,
+              && trx_get_next_same_level_ridge(index, next_undo_info.level,
                                                &next_undo_info)) {
-						next_undo_info.next_trx_id = prev_trx_id;
-					} else {
-						next_undo_info.vridge_level = VRIDGE_NULL;
-						next_undo_info.vridge_trx_id = VRIDGE_NULL;
-						next_undo_info.vridge_roll_ptr = VRIDGE_NULL;
-						next_undo_info.vridge_next_trx_id = VRIDGE_NULL;
-						next_undo_info.next_trx_id = prev_trx_id;
-					}
-				}
-			} else {
-				next_undo_info.vridge_level = next_undo_info.level; 
-				next_undo_info.level = GROUND_LEVEL;
-				next_undo_info.vridge_trx_id = rec_trx_id;
-				next_undo_info.vridge_roll_ptr = rec_roll_ptr;
-				next_undo_info.vridge_next_trx_id = prev_trx_id;
-				next_undo_info.next_trx_id = prev_trx_id;
-			}
-		}
-	}
+              next_undo_info.next_trx_id = prev_trx_id;
+          } else {
+            next_undo_info.vridge_level = VRIDGE_NULL;
+            next_undo_info.vridge_trx_id = VRIDGE_NULL;
+            next_undo_info.vridge_roll_ptr = VRIDGE_NULL;
+            next_undo_info.vridge_next_trx_id = VRIDGE_NULL;
+            next_undo_info.next_trx_id = prev_trx_id;
+          }
+        }
+      } else {
+        next_undo_info.vridge_level = next_undo_info.level; 
+        next_undo_info.level = GROUND_LEVEL;
+        next_undo_info.vridge_trx_id = rec_trx_id;
+        next_undo_info.vridge_roll_ptr = rec_roll_ptr;
+        next_undo_info.vridge_next_trx_id = prev_trx_id;
+        next_undo_info.next_trx_id = prev_trx_id;
+      }
+    }
+  }
 #endif
 
   if (is_temp_table) {
@@ -2785,7 +2782,7 @@ dberr_t trx_undo_report_row_operation(
         offset =
             trx_undo_page_report_modify(undo_page, trx, index, rec, offsets,
                                         update, cmpl_info, clust_entry, &mtr,
-																				&next_undo_info);
+                                        &next_undo_info);
     }
 
     if (UNIV_UNLIKELY(offset == 0)) {
@@ -2900,8 +2897,7 @@ static MY_ATTRIBUTE((warn_unused_result))
     trx_undo_rec_t *trx_undo_get_undo_rec_low(
         roll_ptr_t roll_ptr, /*!< in: roll pointer to record */
         mem_heap_t *heap,    /*!< in: memory heap where copied */
-        bool is_temp        /*!< in: true if temp undo rec. */
-				)
+        bool is_temp)        /*!< in: true if temp undo rec. */
 {
   trx_undo_rec_t *undo_rec;
   ulint rseg_id;
@@ -2924,12 +2920,6 @@ static MY_ATTRIBUTE((warn_unused_result))
   undo_page = trx_undo_page_get_s_latched(page_id_t(space_id, page_no),
                                           page_size, &mtr);
 
-	/*
-	undo_page = buf_block_get_frame(buf_page_get_with_no_latch(
-																				 page_id_t(space_id, page_no),
-																				 page_size, &mtr));
-	*/
-
   undo_rec = trx_undo_rec_copy(undo_page + offset, heap);
 
   mtr_commit(&mtr);
@@ -2938,14 +2928,14 @@ static MY_ATTRIBUTE((warn_unused_result))
 }
 
 /** Copies an undo record to heap.
- @param[in]	roll_ptr	roll pointer to record
- @param[in]	trx_id		id of the trx that generated
+ @param[in] roll_ptr  roll pointer to record
+ @param[in] trx_id    id of the trx that generated
                                  the roll pointer: it points to an
                                  undo log of this transaction
- @param[in]	heap		memory heap where copied
- @param[in]	is_temp		true if temporary, no-redo rseg.
- @param[in]	name		table name
- @param[out]	undo_rec	own: copy of the record
+ @param[in] heap    memory heap where copied
+ @param[in] is_temp true if temporary, no-redo rseg.
+ @param[in] name    table name
+ @param[out]  undo_re own: copy of the record
  @retval true if the undo log has been
  truncated and we cannot fetch the old version
  @retval false if the undo log record is available
@@ -2953,7 +2943,7 @@ static MY_ATTRIBUTE((warn_unused_result))
 static MY_ATTRIBUTE((warn_unused_result)) bool trx_undo_get_undo_rec(
     roll_ptr_t roll_ptr, trx_id_t trx_id, mem_heap_t *heap, bool is_temp,
     const table_name_t &name, trx_undo_rec_t **undo_rec
-		) {
+  ) {
   bool missing_history;
 
   rw_lock_s_lock(&purge_sys->latch);
@@ -2991,92 +2981,93 @@ byte* trx_get_undo_rec_following_ridge(
   ulint * ptype,
   ulint * pinfo_bits)
 {
-	byte * ptr = NULL;
-	roll_ptr_t ori_roll_ptr = roll_ptr;
-	trx_id_t ori_trx_id = trx_id;
-	cvc_info_cache found_info;
-	ulint cmpl_info;
-	bool dummy_extern;
-	undo_no_t undo_no;
-	table_id_t table_id;
-	type_cmpl_t type_cmpl;
-	bool is_temp = index->table->is_temporary();
-	mtr_t mtr;
+  byte * ptr = NULL;
+  roll_ptr_t ori_roll_ptr = roll_ptr;
+  trx_id_t ori_trx_id = trx_id;
+  cvc_info_cache found_info;
+  ulint cmpl_info;
+  bool dummy_extern;
+  undo_no_t undo_no;
+  table_id_t table_id;
+  type_cmpl_t type_cmpl;
+  bool is_temp = index->table->is_temporary();
+  mtr_t mtr;
 
-	trx_undo_rec_t * undo_rec = NULL;
-	
-	mem_heap_t * heap = mem_heap_create(1024);
-	
+  trx_undo_rec_t * undo_rec = NULL;
+  
+  mem_heap_t * heap = mem_heap_create(1024);
 
-	{
-		undo_rec = trx_undo_get_undo_rec_in_vridge_list(ori_roll_ptr,
-																										is_temp, &mtr, &heap);
-		ptr = trx_undo_rec_get_pars(undo_rec, ptype, &cmpl_info, &dummy_extern,
-																&undo_no, &table_id, type_cmpl);
 
-		if (*ptype == TRX_UNDO_INSERT_REC) {
-			mem_heap_free(heap);
-			return NULL;
-		}
+  {
+    undo_rec = trx_undo_get_undo_rec_in_vridge_list(ori_roll_ptr,
+                                                    is_temp, &mtr, &heap);
+    ptr = trx_undo_rec_get_pars(undo_rec, ptype, &cmpl_info, &dummy_extern,
+                                &undo_no, &table_id, type_cmpl);
 
-		ptr = trx_undo_update_rec_get_sys_cols(ptr, &ori_trx_id, &ori_roll_ptr,
-																						pinfo_bits, &found_info);
-	}
-	mem_heap_free(heap);
-	heap = mem_heap_create(1024);
+    if (*ptype == TRX_UNDO_INSERT_REC) {
+      mem_heap_free(heap);
+      return NULL;
+    }
 
-	while (true) {
-		if (found_info.vridge_next_trx_id 
-				&& !view->changes_visible(found_info.vridge_next_trx_id,
-					                        index->table->name)) {
-		  undo_rec = trx_undo_get_undo_rec_in_vridge_list(found_info.vridge_roll_ptr,
-																											is_temp, &mtr, &heap);
+    ptr = trx_undo_update_rec_get_sys_cols(ptr, &ori_trx_id, &ori_roll_ptr,
+                                           pinfo_bits, &found_info);
+  }
+  mem_heap_free(heap);
+  heap = mem_heap_create(1024);
 
-			ptr = trx_undo_rec_get_pars(undo_rec, ptype, &cmpl_info, &dummy_extern,
-																	&undo_no, &table_id, type_cmpl);
-			ptr = trx_undo_update_rec_get_sys_cols(ptr, &ori_trx_id, &ori_roll_ptr, 
-																							pinfo_bits, &found_info); 
-		} else if (found_info.next_trx_id 
-				       && !view->changes_visible(found_info.next_trx_id,
-																				 index->table->name)) {
-			undo_rec = trx_undo_get_undo_rec_in_vridge_list(ori_roll_ptr,
-																											is_temp, &mtr, &heap);
+  while (true) {
+    if (found_info.vridge_next_trx_id 
+      && !view->changes_visible(found_info.vridge_next_trx_id,
+                                index->table->name)) {
+      undo_rec = trx_undo_get_undo_rec_in_vridge_list(
+                                              found_info.vridge_roll_ptr,
+                                              is_temp, &mtr, &heap);
 
-			ptr = trx_undo_rec_get_pars(undo_rec, ptype, &cmpl_info, &dummy_extern,
-																	&undo_no, &table_id, type_cmpl);
-			ptr = trx_undo_update_rec_get_sys_cols(ptr, &ori_trx_id, &ori_roll_ptr,
-																							pinfo_bits, &found_info); 
-		} else {
-			if (ori_trx_id && view->changes_visible(ori_trx_id, index->table->name)) {
-				*ptrx_id = ori_trx_id;
-				*proll_ptr = ori_roll_ptr;
-				break;
-			} else if (found_info.next_trx_id &&
-									view->changes_visible(found_info.next_trx_id, 
-					                              index->table->name)) {
-				mem_heap_free(heap);
-				heap = mem_heap_create(1024);
-				undo_rec = trx_undo_get_undo_rec_in_vridge_list(ori_roll_ptr,
-																												is_temp, &mtr, &heap);
+      ptr = trx_undo_rec_get_pars(undo_rec, ptype, &cmpl_info, &dummy_extern,
+                                  &undo_no, &table_id, type_cmpl);
+      ptr = trx_undo_update_rec_get_sys_cols(ptr, &ori_trx_id, &ori_roll_ptr, 
+                                             pinfo_bits, &found_info); 
+    } else if (found_info.next_trx_id 
+               && !view->changes_visible(found_info.next_trx_id,
+                                         index->table->name)) {
+      undo_rec = trx_undo_get_undo_rec_in_vridge_list(ori_roll_ptr,
+                                                      is_temp, &mtr, &heap);
 
-				ptr = trx_undo_rec_get_pars(undo_rec, ptype, &cmpl_info, &dummy_extern,
-																		&undo_no, &table_id, type_cmpl);
-				ptr = trx_undo_update_rec_get_sys_cols(ptr, &ori_trx_id, &ori_roll_ptr,
-																								pinfo_bits, &found_info);
-				*ptrx_id = ori_trx_id;
-				*proll_ptr = ori_roll_ptr;
-				break;
-			}
-			mem_heap_free(heap);
-			return NULL;
-		}
-		mem_heap_free(heap);
-		heap = mem_heap_create(1024);
-	}
-	mem_heap_free(*pheap);
-	*pheap = heap;
+      ptr = trx_undo_rec_get_pars(undo_rec, ptype, &cmpl_info, &dummy_extern,
+                                  &undo_no, &table_id, type_cmpl);
+      ptr = trx_undo_update_rec_get_sys_cols(ptr, &ori_trx_id, &ori_roll_ptr,
+                                             pinfo_bits, &found_info); 
+    } else {
+      if (ori_trx_id && view->changes_visible(ori_trx_id, index->table->name)) {
+        *ptrx_id = ori_trx_id;
+        *proll_ptr = ori_roll_ptr;
+        break;
+      } else if (found_info.next_trx_id &&
+                 view->changes_visible(found_info.next_trx_id, 
+                                       index->table->name)) {
+        mem_heap_free(heap);
+        heap = mem_heap_create(1024);
+        undo_rec = trx_undo_get_undo_rec_in_vridge_list(ori_roll_ptr,
+                                                        is_temp, &mtr, &heap);
 
-	return ptr;
+        ptr = trx_undo_rec_get_pars(undo_rec, ptype, &cmpl_info, &dummy_extern,
+                                    &undo_no, &table_id, type_cmpl);
+        ptr = trx_undo_update_rec_get_sys_cols(ptr, &ori_trx_id, &ori_roll_ptr,
+                                               pinfo_bits, &found_info);
+        *ptrx_id = ori_trx_id;
+        *proll_ptr = ori_roll_ptr;
+        break;
+      }
+      mem_heap_free(heap);
+      return NULL;
+    }
+    mem_heap_free(heap);
+    heap = mem_heap_create(1024);
+  }
+  mem_heap_free(*pheap);
+  *pheap = heap;
+
+  return ptr;
 }
 
 #endif
@@ -3106,7 +3097,7 @@ bool trx_undo_prev_version_build_in_vridge(
   ulint cmpl_info;
   bool dummy_extern;
   byte *buf;
-	bool is_user_record = rec_is_user_record(rec, index);
+  bool is_user_record = rec_is_user_record(rec, index);
   type_cmpl_t type_cmpl;
 
   ut_ad(!rw_lock_own(&purge_sys->latch, RW_LOCK_S));
@@ -3119,7 +3110,7 @@ bool trx_undo_prev_version_build_in_vridge(
 
   *old_vers = NULL;
 
-  if (trx_undo_roll_ptr_is_insert(roll_ptr)) {
+  if (trx_undo_roll_ptr_is_insert(rec_roll_ptr)) {
     /* The record rec is the first inserted version */
     return true;
   }
@@ -3132,42 +3123,42 @@ bool trx_undo_prev_version_build_in_vridge(
 
   ut_ad(!index->table->skip_alter_undo);
 
-	if (is_user_record) {
-		ptr = trx_get_undo_rec_following_ridge(index, rec, offsets, heap,
-																					 rec_roll_ptr, rec_trx_id, view, 
-																					 &trx_id, &roll_ptr, &type, 
-																					 &info_bits);
+  if (is_user_record) {
+    ptr = trx_get_undo_rec_following_ridge(index, rec, offsets, heap,
+                                           rec_roll_ptr, rec_trx_id, view, 
+                                           &trx_id, &roll_ptr, &type, 
+                                           &info_bits);
 
-		if(!ptr) {
-			return true;
-		}
+    if(!ptr) {
+      return true;
+    }
 
-		ptr = trx_undo_rec_skip_row_ref(ptr, index);
+    ptr = trx_undo_rec_skip_row_ref(ptr, index);
 
-		ptr = trx_undo_update_rec_get_update(ptr, index, type, trx_id, roll_ptr, 
-																				 info_bits, NULL, *heap, &update, 
-																				 lob_undo, type_cmpl);
-		ut_a(ptr);
+    ptr = trx_undo_update_rec_get_update(ptr, index, type, trx_id, roll_ptr, 
+                                         info_bits, NULL, *heap, &update, 
+                                         lob_undo, type_cmpl);
+    ut_a(ptr);
 
-		if (row_upd_changes_field_size_or_external(index, offsets, update)) {
-		} else {
-			buf = static_cast<byte *>(mem_heap_alloc(*heap
-																								, rec_offs_size(offsets)));
+    if (row_upd_changes_field_size_or_external(index, offsets, update)) {
+    } else {
+      buf = static_cast<byte *>(mem_heap_alloc(*heap,
+                                               rec_offs_size(offsets)));
 
-			*old_vers = rec_copy(buf, rec, offsets);
-			rec_offs_make_valid(*old_vers, index, offsets);
-			row_upd_rec_in_place(*old_vers, index, offsets, update, NULL);	
-			ut_a(*old_vers);
-		}
+      *old_vers = rec_copy(buf, rec, offsets);
+      rec_offs_make_valid(*old_vers, index, offsets);
+      row_upd_rec_in_place(*old_vers, index, offsets, update, NULL);
+      ut_a(*old_vers);
+    }
 
-		if (false & TRX_UNDO_GET_OLD_V_VALUE) {
-		}
+    if (false & TRX_UNDO_GET_OLD_V_VALUE) {
+    }
 
-		if (update != nullptr) {
-			update->reset();
-		}
-		return true;
-	}
+    if (update != nullptr) {
+      update->reset();
+    }
+    return true;
+  }
 
   if (trx_undo_get_undo_rec(roll_ptr, rec_trx_id, *heap, is_temp,
                             index->table->name, &undo_rec)) {
@@ -3191,8 +3182,8 @@ bool trx_undo_prev_version_build_in_vridge(
     return true;
   }
 
-	ptr = trx_undo_update_rec_get_sys_cols(ptr, &trx_id, &roll_ptr, &info_bits
-																					, NULL);
+  ptr = trx_undo_update_rec_get_sys_cols(ptr, &trx_id, &roll_ptr, &info_bits,
+                                         NULL);
 
   /* (a) If a clustered index record version is such that the
   trx id stamp in it is bigger than purge_sys->view, then the
@@ -3220,7 +3211,7 @@ bool trx_undo_prev_version_build_in_vridge(
 
   ptr = trx_undo_update_rec_get_update(ptr, index, type, trx_id, roll_ptr,
                                        info_bits, NULL, *heap, &update, 
-																			 lob_undo, type_cmpl);
+                                       lob_undo, type_cmpl);
   ut_a(ptr);
 
   if (row_upd_changes_field_size_or_external(index, offsets, update)) {
@@ -3411,7 +3402,7 @@ bool trx_undo_prev_version_build(
   }
 #ifdef SCSLAB_CVC
   ptr = trx_undo_update_rec_get_sys_cols(ptr, &trx_id, &roll_ptr, &info_bits,
-																					NULL);
+                                         NULL);
 #else
   ptr = trx_undo_update_rec_get_sys_cols(ptr, &trx_id, &roll_ptr, &info_bits);
 #endif
