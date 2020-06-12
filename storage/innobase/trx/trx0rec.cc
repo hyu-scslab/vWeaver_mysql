@@ -109,7 +109,6 @@ void trx_undo_get_prev_undo_info(roll_ptr_t roll_ptr,
   table_id_t table_id;
   type_cmpl_t type_cmpl;
   trx_undo_rec_t * undo_rec;
-  mem_heap_t * heap = mem_heap_create(1024);
   mtr_t mtr;
   byte * ptr;
 
@@ -117,6 +116,7 @@ void trx_undo_get_prev_undo_info(roll_ptr_t roll_ptr,
     next_undo_info->level = 1;
     next_undo_info->vridge_level = 0; 
   } else { 
+    mem_heap_t * heap = mem_heap_create(1024);
     undo_rec = trx_undo_get_undo_rec_in_vridge_list(roll_ptr, false, 
                                                     &mtr, &heap);
     ptr = trx_undo_rec_get_pars(undo_rec, &type, &cmpl_info, &dummy_extern,
@@ -2994,34 +2994,31 @@ byte* trx_get_undo_rec_following_ridge(
   mtr_t mtr;
 
   trx_undo_rec_t * undo_rec = NULL;
-  
-  mem_heap_t * heap = mem_heap_create(1024);
 
 
   {
     undo_rec = trx_undo_get_undo_rec_in_vridge_list(ori_roll_ptr,
-                                                    is_temp, &mtr, &heap);
+                                                    is_temp, &mtr, pheap);
     ptr = trx_undo_rec_get_pars(undo_rec, ptype, &cmpl_info, &dummy_extern,
                                 &undo_no, &table_id, type_cmpl);
 
     if (*ptype == TRX_UNDO_INSERT_REC) {
-      mem_heap_free(heap);
       return NULL;
     }
 
     ptr = trx_undo_update_rec_get_sys_cols(ptr, &ori_trx_id, &ori_roll_ptr,
                                            pinfo_bits, &found_info);
   }
-  mem_heap_free(heap);
-  heap = mem_heap_create(1024);
 
   while (true) {
     if (found_info.vridge_next_trx_id 
       && !view->changes_visible(found_info.vridge_next_trx_id,
                                 index->table->name)) {
+      mem_heap_free(*pheap);
+      *pheap = mem_heap_create(1024);
       undo_rec = trx_undo_get_undo_rec_in_vridge_list(
                                               found_info.vridge_roll_ptr,
-                                              is_temp, &mtr, &heap);
+                                              is_temp, &mtr, pheap);
 
       ptr = trx_undo_rec_get_pars(undo_rec, ptype, &cmpl_info, &dummy_extern,
                                   &undo_no, &table_id, type_cmpl);
@@ -3030,8 +3027,10 @@ byte* trx_get_undo_rec_following_ridge(
     } else if (found_info.next_trx_id 
                && !view->changes_visible(found_info.next_trx_id,
                                          index->table->name)) {
+      mem_heap_free(*pheap);
+      *pheap = mem_heap_create(1024);
       undo_rec = trx_undo_get_undo_rec_in_vridge_list(ori_roll_ptr,
-                                                      is_temp, &mtr, &heap);
+                                                      is_temp, &mtr, pheap);
 
       ptr = trx_undo_rec_get_pars(undo_rec, ptype, &cmpl_info, &dummy_extern,
                                   &undo_no, &table_id, type_cmpl);
@@ -3045,10 +3044,10 @@ byte* trx_get_undo_rec_following_ridge(
       } else if (found_info.next_trx_id &&
                  view->changes_visible(found_info.next_trx_id, 
                                        index->table->name)) {
-        mem_heap_free(heap);
-        heap = mem_heap_create(1024);
+        mem_heap_free(*pheap);
+        *pheap = mem_heap_create(1024);
         undo_rec = trx_undo_get_undo_rec_in_vridge_list(ori_roll_ptr,
-                                                        is_temp, &mtr, &heap);
+                                                        is_temp, &mtr, pheap);
 
         ptr = trx_undo_rec_get_pars(undo_rec, ptype, &cmpl_info, &dummy_extern,
                                     &undo_no, &table_id, type_cmpl);
@@ -3058,15 +3057,9 @@ byte* trx_get_undo_rec_following_ridge(
         *proll_ptr = ori_roll_ptr;
         break;
       }
-      mem_heap_free(heap);
       return NULL;
     }
-    mem_heap_free(heap);
-    heap = mem_heap_create(1024);
   }
-  mem_heap_free(*pheap);
-  *pheap = heap;
-
   return ptr;
 }
 

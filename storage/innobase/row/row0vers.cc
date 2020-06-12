@@ -1345,6 +1345,7 @@ dberr_t row_vers_build_for_consistent_read(
         dtuple_dup_v_fld(*vrow, in_heap);
       }
 
+      mem_heap_free(heap);
       return err;
     }
 
