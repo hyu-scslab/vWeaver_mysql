@@ -113,7 +113,7 @@ byte *trx_undo_update_rec_get_sys_cols(
     roll_ptr_t *roll_ptr, /*!< out: roll ptr */
     ulint *info_bits
 #ifdef SCSLAB_CVC
-    ,cvc_info_cache * next_undo_info
+    ,cvc_info_cache * prev_undo_info
 #endif	
 		);    /*!< out: info bits state */
 
@@ -425,7 +425,7 @@ const byte *trx_undo_rec_get_multi_value(const byte *ptr, dfield_t *field,
 bool trx_get_next_same_level_ridge(
   dict_index_t * index,
   cvc_level_t new_level,
-  cvc_info_cache * next_undo_info);
+  cvc_info_cache * prev_undo_info);
 
 byte* trx_get_undo_rec_following_ridge(
   const dict_index_t * index,

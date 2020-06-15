@@ -163,8 +163,8 @@ typedef struct __cvc_cache_info__
 {
   cvc_level_t level, vridge_level;
   trx_id_t vridge_trx_id; 
-  trx_id_t vridge_next_trx_id; 
-  trx_id_t next_trx_id;
+  trx_id_t vridge_prev_trx_id; 
+  trx_id_t prev_trx_id;
   roll_ptr_t vridge_roll_ptr;
 } cvc_info_cache;
 #endif
