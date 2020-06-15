@@ -1352,65 +1352,7 @@ dberr_t row_vers_build_for_consistent_read(
     version = prev_version;
 
   } else {
-    for (;;) {
-		  mem_heap_t *prev_heap = heap;
-
-      heap = mem_heap_create(1024);
-
-      if (vrow) {
-		    *vrow = NULL;
-      }
-
-			/* If purge can't see the record then we can't rely on
-			the UNDO log record. */
-
-      bool purge_sees =
-			    trx_undo_prev_version_build(rec, mtr, version, index, *offsets, heap,
-                                      &prev_version, NULL, vrow, 0, lob_undo);
-
-      err = (purge_sees) ? DB_SUCCESS : DB_MISSING_HISTORY;
-
-      if (prev_heap != NULL) {
-        mem_heap_free(prev_heap);
-      }
-
-      if (prev_version == NULL) {
-        /* It was a freshly inserted version */
-        *old_vers = NULL;
-        ut_ad(!vrow || !(*vrow));
-        break;
-      }
-
-      *offsets = rec_get_offsets(prev_version, index, *offsets, ULINT_UNDEFINED,
-                                 offset_heap);
-
-#if defined UNIV_DEBUG || defined UNIV_BLOB_LIGHT_DEBUG
-      ut_a(!rec_offs_any_null_extern(prev_version, *offsets));
-#endif /* UNIV_DEBUG || UNIV_BLOB_LIGHT_DEBUG */
-
-      trx_id = row_get_rec_trx_id(prev_version, index, *offsets);
-
-      if (view->changes_visible(trx_id, index->table->name)) {
-        /* The view already sees this version: we can copy
-        it to in_heap and return */
-
-        buf = static_cast<byte *>(mem_heap_alloc(in_heap,
-                                                 rec_offs_size(*offsets)));
-
-        *old_vers = rec_copy(buf, prev_version, *offsets);
-        rec_offs_make_valid(*old_vers, index, *offsets);
-
-        if (vrow && *vrow) {
-		      *vrow = dtuple_copy(*vrow, in_heap);
-		      dtuple_dup_v_fld(*vrow, in_heap);
-        }
-				break;
-      }
-
-    version = prev_version;
-    }
-  }
-#else
+#else /* SCSLAB_CVC */
   for (;;) {
     mem_heap_t *prev_heap = heap;
 
@@ -1421,7 +1363,7 @@ dberr_t row_vers_build_for_consistent_read(
     }
 
     /* If purge can't see the record then we can't rely on
-    the UNDO log record. */
+       the UNDO log record. */
 
     bool purge_sees =
         trx_undo_prev_version_build(rec, mtr, version, index, *offsets, heap,
@@ -1453,8 +1395,8 @@ dberr_t row_vers_build_for_consistent_read(
       /* The view already sees this version: we can copy
       it to in_heap and return */
 
-      buf =
-          static_cast<byte *>(mem_heap_alloc(in_heap, rec_offs_size(*offsets)));
+      buf = static_cast<byte *>(mem_heap_alloc(in_heap,
+                                               rec_offs_size(*offsets)));
 
       *old_vers = rec_copy(buf, prev_version, *offsets);
       rec_offs_make_valid(*old_vers, index, *offsets);
@@ -1468,7 +1410,11 @@ dberr_t row_vers_build_for_consistent_read(
 
     version = prev_version;
   }
+#endif /*SCSLAB_CVC */
+#ifdef SCSLAB_CVC
+  }
 #endif
+  
   mem_heap_free(heap);
   return err;
 }
