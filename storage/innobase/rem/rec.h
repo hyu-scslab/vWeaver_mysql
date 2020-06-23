@@ -709,6 +709,10 @@ uint16_t rec_init_null_and_len_comp(const rec_t *rec, const dict_index_t *index,
 }
 
 #ifdef SCSLAB_CVC
+/** Determines whether this input record is user record or not
+@param[in]	rec		physical record
+@param[in]	index		index where the record resides
+@return if record is user record, return true or not false. */
 UNIV_INLINE
 bool rec_is_user_record(
   const rec_t*            rec,

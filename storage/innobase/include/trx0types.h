@@ -153,19 +153,28 @@ typedef ib_id_t undo_no_t;
 
 #ifdef SCSLAB_CVC
 
+/** User record identifier */
 #define NON_USER_RECORD 0
+/** Null macro in vridge structure */
 #define VRIDGE_NULL	0
+/** First level in vridge level*/
 #define GROUND_LEVEL 1
+/** Extra space to add to undo log in vridge structure*/
 #define VRIDGE_ADDITIONAL_SPACE_IN_UNDO 40
 
+/** Coin toss level identifier */
 typedef byte cvc_level_t;
-typedef struct __cvc_cache_info__
+/** Atructure to hold additional information for vridge*/
+typedef struct __cvc_info_cache__
 {
-  cvc_level_t level, vridge_level;
-  trx_id_t vridge_trx_id; 
-  trx_id_t vridge_prev_trx_id; 
-  trx_id_t prev_trx_id;
-  roll_ptr_t vridge_roll_ptr;
+  cvc_level_t level;           /* current undo level */
+  cvc_level_t vridge_level;    /* level seen when follwing vridge roll pointer*/
+  trx_id_t vridge_trx_id;      /* the id of trx that made undo log to follow 
+                                  vridge */
+  trx_id_t vridge_prev_trx_id; /* the id of trx of undo log to follow vridge*/
+  trx_id_t prev_trx_id;        /* the id of trx of undo log to follow origin
+                                  rollback pointer*/
+  roll_ptr_t vridge_roll_ptr;  /* the rollback pointer to follow vridge*/
 } cvc_info_cache;
 #endif
 

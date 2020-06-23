@@ -1298,14 +1298,17 @@ dberr_t row_vers_build_for_consistent_read(
   version = rec;
 
 #ifdef SCSLAB_CVC
+  //if record is user record, follow version ridge.
   if(is_user_record) {
-    mem_heap_t * prev_heap = heap;
+    mem_heap_t * prev_heap = NULL;
     heap = mem_heap_create(1024);
 
     if (vrow) {
       *vrow = NULL;
     }
 
+    /* Follow version ridge. A version that should be seen is contained
+       in prev_version */
     bool purge_sees =
         trx_undo_prev_version_build_in_vridge(rec, mtr, version, index, 
                                               *offsets, &heap, &prev_version, 
@@ -1320,6 +1323,7 @@ dberr_t row_vers_build_for_consistent_read(
     if (prev_version == NULL) {
       /* It was a freshly inserted version */
       *old_vers = NULL;
+      mem_heap_free(heap);
       ut_ad(!vrow || !(*vrow));
       return err;
     }
@@ -1331,9 +1335,9 @@ dberr_t row_vers_build_for_consistent_read(
     ut_a(!rec_offs_any_null_extern(prev_version, *offsets));
 #endif /* UNIV_DEBUG || UNIV_BLOB_LIGHT_DEBUG */
 
-    trx_id = row_get_rec_trx_id(prev_version, index, *offsets);
+    //trx_id = row_get_rec_trx_id(prev_version, index, *offsets);
 
-    if (view->changes_visible(trx_id, index->table->name)) {
+    //if (view->changes_visible(trx_id, index->table->name)) {
       buf = static_cast<byte *>(mem_heap_alloc(in_heap,
                                                rec_offs_size(*offsets)));
 
@@ -1347,9 +1351,9 @@ dberr_t row_vers_build_for_consistent_read(
 
       mem_heap_free(heap);
       return err;
-    }
+    //}
 
-    version = prev_version;
+    //version = prev_version;
 
   } else {
 #else /* SCSLAB_CVC */

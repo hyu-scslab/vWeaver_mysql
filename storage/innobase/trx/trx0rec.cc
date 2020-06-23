@@ -63,11 +63,17 @@ class Spatial_reference_system;
 
 #ifdef SCSLAB_CVC
 
+/** Get previous undo record in vridge structure.
+@param[in]      roll_ptr  rollback pointer to point previous undo record
+@param[in]      is_temp   true if temp undo rec
+@param[in]      mtr       mini-transaction
+@param[in/out]  pheap     memory heap from which the memory needed is allocated
+@return copied undo record pointer */
 trx_undo_rec_t * 
   trx_undo_get_undo_rec_in_vridge_list(roll_ptr_t roll_ptr,
                                        bool is_temp,
                                        mtr_t * mtr,
-                                      mem_heap_t ** pheap)
+                                       mem_heap_t ** pheap)
 {
   ibool is_insert;
   ulint rseg_id, offset;
@@ -75,6 +81,7 @@ trx_undo_rec_t *
   page_t * undo_page;
   space_id_t space_id;
   bool found;
+  trx_undo_rec_t * undo_rec;
 
   trx_undo_decode_roll_ptr(roll_ptr, &is_insert, &rseg_id, 
                            &page_no, &offset);
@@ -85,6 +92,7 @@ trx_undo_rec_t *
 
   mtr_start(mtr);
 
+  // Get undo page
   undo_page = trx_undo_page_get_s_latched(page_id_t(space_id, page_no),
                                                     page_size, mtr);
   /*
@@ -92,11 +100,16 @@ trx_undo_rec_t *
                                  page_id_t(space_id, page_no),
                                  page_size , mtr));
   */
+  // Get undo record from undo page
+  undo_rec = trx_undo_rec_copy(undo_page + offset, *pheap);
   mtr_commit(mtr);
-  return trx_undo_rec_copy(undo_page + offset, *pheap);
+  return undo_rec;
 }
 
-
+/** Get previous undo log metadata
+@param[in]   roll_ptr       rollback pointer to point previous undo record 
+@param[out]  p_prev_trx_id  previous undo log trx id
+@param[out]  prev_undo_info container of previous undo log information */
 void trx_undo_get_prev_undo_info(roll_ptr_t roll_ptr, 
                                  trx_id_t * p_prev_trx_id,
                                  cvc_info_cache * prev_undo_info) 
@@ -116,6 +129,7 @@ void trx_undo_get_prev_undo_info(roll_ptr_t roll_ptr,
     prev_undo_info->level = 1;
     prev_undo_info->vridge_level = 0; 
   } else { 
+    // If a record is not the first record, get previous undo log metadata
     mem_heap_t * heap = mem_heap_create(1024);
     undo_rec = trx_undo_get_undo_rec_in_vridge_list(roll_ptr, false, 
                                                     &mtr, &heap);
@@ -577,7 +591,7 @@ static ulint trx_undo_page_report_insert(
     return (0);
   }
 
-  /* Reserve 2 bytes for the pointer to the next undo log record */
+  /* Reserve 2 bytes for the pointer to the previous undo log record */
   ptr += 2;
 
   /* Store first some general parameters to the undo log */
@@ -1069,6 +1083,8 @@ static const byte *trx_undo_read_blob_update(const byte *undo_ptr,
   return undo_ptr;
 }
 
+
+#ifndef SCSLAB_CVC
 /** Write the partial update information about LOBs to the undo log record.
 @param[in]	undo_page	the undo page
 @param[in]	index		the clustered index where LOBs are modified.
@@ -1235,10 +1251,15 @@ static byte *trx_undo_report_blob_update(page_t *undo_page, dict_index_t *index,
 
   return undo_ptr;
 }
+#endif
 
 #ifdef SCSLAB_CVC
-
-bool trx_get_next_same_level_ridge(
+/** When updating records, get a next equal or higher level undo log metadata.
+@param[in]    index           clustered index 
+@param[in]    new_level       new level after coin tossing
+@param[out]   prev_undo_info  previous undo log metadata 
+@return whether it is successful to get the previous undo log or not. */
+bool trx_get_next_equal_or_higher_level_ridge(
   dict_index_t * index,
   cvc_level_t new_level,
   cvc_info_cache * prev_undo_info)
@@ -1248,10 +1269,13 @@ bool trx_get_next_same_level_ridge(
 
   found_info.vridge_roll_ptr = prev_undo_info->vridge_roll_ptr;
 
+  // re-try when rollback pointer from vridge points valid roll ptr
   while (!trx_undo_roll_ptr_is_insert(found_info.vridge_roll_ptr)) {
     trx_undo_get_prev_undo_info(found_info.vridge_roll_ptr, &trx_id,
                                 &found_info);
 
+    /** If found undo log's vridge level is higher than or equal to new level,
+        this undo log's metadata is used. */
     if ((ulint)found_info.vridge_level >= (ulint)new_level) {
       prev_undo_info->vridge_level = found_info.vridge_level;
       prev_undo_info->vridge_trx_id = found_info.vridge_trx_id;
@@ -1290,9 +1314,10 @@ static ulint trx_undo_page_report_modify(
                           index updates */
     const dtuple_t *row,  /*!< in: clustered index row contains
                           virtual column info */
-    mtr_t *mtr           /*!< in: mtr */
+    mtr_t *mtr            /*!< in: mtr */
 #ifdef SCSLAB_CVC
-    ,cvc_info_cache * undo_info
+    ,cvc_info_cache * undo_info /*!< in: additional information written at 
+                                     undo log in vridge structure */
 #endif
     )
 {
@@ -1345,7 +1370,7 @@ static ulint trx_undo_page_report_modify(
     return 0;
   }
 
-  /* Reserve 2 bytes for the pointer to the next undo log record */
+  /* Reserve 2 bytes for the pointer to the previous undo log record */
   ptr += 2;
 
   /* Store first some general parameters to the undo log */
@@ -1411,6 +1436,21 @@ static ulint trx_undo_page_report_modify(
   roll_ptr_t roll_ptr = trx_read_roll_ptr(field);
 
   if (is_user_record) {
+  /** undo log structure in vridge if it is user record's undo log
+   *** It is saved by compressed form. ***
+   ----------- Additional field of vridge -----------
+   1 byte - current level in frugal skip list. This byte is used to distinguish
+            whether this undo log is of user record or not. (!= 0)
+   1 byte - level that can be checked when following vridge rollback pointer.
+   8 byte - the version of undo log checked by following vridge
+   8 byte - the rollback pointer of vridge
+   8 byte - the prev version of undo log by following origin rollback pointer
+   8 byte - the prev version of undo log by following vridge
+   ----------- Original filed -----------
+   8 byte - the version of this undo log
+   8 byte - the rollback pointer of this undo log
+   --------------------------------------
+   */
 
     *ptr++ = undo_info->level;
     *ptr++ = undo_info->vridge_level;
@@ -1421,6 +1461,16 @@ static ulint trx_undo_page_report_modify(
     ptr += mach_u64_write_compressed(ptr, trx_id);
     ptr += mach_u64_write_compressed(ptr, roll_ptr);
   } else {
+  /** undo log structure in vridge if it is not user record's undo log
+   *** It is saved by compressed form. ***
+   ----------- Additional field of vridge -----------
+   1 byte - current level in frugal skip list. This byte is used to distinguish
+            whether this undo log is of user record or not. (== 0)
+   ----------- Original filed -----------
+   8 byte - the version of this undo log
+   8 byte - the rollback pointer of this undo log
+   --------------------------------------
+   */
     *ptr++ = NON_USER_RECORD;
     ptr += mach_u64_write_compressed(ptr, trx_id);
     ptr += mach_u64_write_compressed(ptr, roll_ptr);
@@ -1464,6 +1514,8 @@ static ulint trx_undo_page_report_modify(
   if (update) {
 
 #ifdef SCSLAB_CVC
+    /** TODO: It should be able to cope with cases record has virtual column or
+              external column. */ 
     ulint j = 0, pos = 0;
     upd_field_t * fld;
     bool n_field_zero_flags = false;
@@ -1943,7 +1995,7 @@ static ulint trx_undo_page_report_modify(
   }
 
   /*----------------------------------------*/
-  /* Write pointers to the previous and the next undo log records */
+  /* Write pointers to the previous and the previous undo log records */
   if (trx_undo_left(undo_page, ptr) < 2) {
     return 0;
   }
@@ -1972,9 +2024,9 @@ byte *trx_undo_update_rec_get_sys_cols(
     roll_ptr_t *roll_ptr,             /*!< out: roll ptr */
     ulint *info_bits                  /*!< out: info_bits */
 #ifdef SCSLAB_CVC
-    , cvc_info_cache * prev_undo_info 
+    , cvc_info_cache * prev_undo_info /*!< out: previous undo info container */
 #endif
-    )     /*!< out: info bits state */
+    )  
 {
   /* Read the state of the info bits */
   *info_bits = mach_read_from_1(ptr);
@@ -1996,7 +2048,7 @@ byte *trx_undo_update_rec_get_sys_cols(
   if (is_user_record) {
     if (prev_undo_info) {
       prev_undo_info->vridge_level = mach_read_from_1(ptr);
-        ptr += 1;
+      ptr += 1;
       prev_undo_info->vridge_trx_id = mach_u64_read_next_compressed(&ptr);
       prev_undo_info->vridge_roll_ptr = mach_u64_read_next_compressed(&ptr);
       prev_undo_info->prev_trx_id = mach_u64_read_next_compressed(&ptr);
@@ -2497,12 +2549,14 @@ dberr_t trx_undo_report_row_operation(
       rec_roll_ptr = row_get_rec_roll_ptr(rec, index, offsets);
 
       if (trx_undo_roll_ptr_is_insert(rec_roll_ptr)) {
+        // if record is first version
         rec_roll_ptr = VRIDGE_NULL;
         rec_trx_id = VRIDGE_NULL;
         prev_trx_id =  VRIDGE_NULL;
         prev_undo_info.level = VRIDGE_NULL;
         prev_undo_info.vridge_level = VRIDGE_NULL;
       } else {
+        // if  record is not first version, read undo log contents.
         trx_undo_get_prev_undo_info(rec_roll_ptr, &prev_trx_id, 
                                     &prev_undo_info);
         rec_trx_id = trx_read_trx_id(rec_get_nth_field(rec, offsets,
@@ -2516,7 +2570,8 @@ dberr_t trx_undo_report_row_operation(
           prev_undo_info.prev_trx_id = prev_trx_id;
         } else {
           if (prev_undo_info.vridge_level 
-              && trx_get_next_same_level_ridge(index, prev_undo_info.level,
+              && trx_get_next_equal_or_higher_level_ridge(index, 
+                                               prev_undo_info.level,
                                                &prev_undo_info)) {
               prev_undo_info.prev_trx_id = prev_trx_id;
           } else {
@@ -2620,9 +2675,14 @@ dberr_t trx_undo_report_row_operation(
       default:
         ut_ad(op_type == TRX_UNDO_MODIFY_OP);
         offset =
+#ifdef SCSLAB_CVC
             trx_undo_page_report_modify(undo_page, trx, index, rec, offsets,
                                         update, cmpl_info, clust_entry, &mtr,
                                         &prev_undo_info);
+#else
+            trx_undo_page_report_modify(undo_page, trx, index, rec, offsets,
+                                        update, cmpl_info, clust_entry, &mtr);
+#endif
     }
 
     if (UNIV_UNLIKELY(offset == 0)) {
@@ -2807,11 +2867,20 @@ static MY_ATTRIBUTE((warn_unused_result)) bool trx_undo_get_undo_rec(
 
 #ifdef SCSLAB_CVC
 
+/** Get the version of a clustered index record that a select worker should see.
+@param[in]      index       clustered index
+@param[in/out]  pheap       memory heap where the memory needed is allocated
+@param[in]      roll_ptr    rollback pointer in the record
+@param[in]      trx_id      trx id in the record
+@param[in]      view        read view of select query
+@param[out]     ptrx_id     the id of version that select worker should see
+@param[out]     proll_ptr   rollback pointer of version that select worker should see
+@param[out]     ptype       undo log type
+@param[out]     pinfo_bits  undo log information bits 
+@return start location pointer of version record data */
 
 byte* trx_get_undo_rec_following_ridge(
   const dict_index_t * index,
-  const rec_t * rec,
-  ulint * offsets,
   mem_heap_t ** pheap,
   roll_ptr_t roll_ptr,
   trx_id_t trx_id,
@@ -2906,6 +2975,32 @@ byte* trx_get_undo_rec_following_ridge(
 #endif
 
 #ifdef SCSLAB_CVC
+
+/** Build the version for consistent select worker.
+@param[in]	index_rec	clustered index record in the index tree
+@param[in]	index_mtr	mtr which contains the latch to index_rec page
+                                and purge_view
+@param[in]	rec		version of a clustered index record
+@param[in]	index		clustered index
+@param[in,out]	offsets		rec_get_offsets(rec, index)
+@param[in]	heap		memory heap from which the memory needed is
+                                allocated
+@param[out]	old_vers	previous version, or NULL if rec is the first
+                                inserted version, or if history data has been
+                                deleted
+@param[in]	v_heap		memory heap used to create vrow dtuple if it is
+                                not yet created. This heap diffs from "heap"
+                                above in that it could be
+                                prebuilt->old_vers_heap for selection
+@param[out]	vrow		virtual column info, if any
+@param[in]	v_status	status determine if it is going into this
+                                function by purge thread or not. And if we read
+                                "after image" of undo log has been rebuilt
+@param[in]	lob_undo	LOB undo information.
+@param[in]  view      read view of select worker.
+@return if the version was built, or if it was an insert or the table
+has been rebuilt, return true, otherwise return false */
+
 bool trx_undo_prev_version_build_in_vridge(
   const rec_t *index_rec ATTRIB_USED_ONLY_IN_DEBUG,
   mtr_t *index_mtr ATTRIB_USED_ONLY_IN_DEBUG, const rec_t *rec,
@@ -2957,11 +3052,9 @@ bool trx_undo_prev_version_build_in_vridge(
   ut_ad(!index->table->skip_alter_undo);
 
   if (is_user_record) {
-    ptr = trx_get_undo_rec_following_ridge(index, rec, offsets, heap,
-                                           rec_roll_ptr, rec_trx_id, view, 
-                                           &trx_id, &roll_ptr, &type, 
-                                           &info_bits);
-
+    ptr = trx_get_undo_rec_following_ridge(index, heap, rec_roll_ptr, 
+                                           rec_trx_id, view,  &trx_id, 
+                                           &roll_ptr, &type, &info_bits);
     if(!ptr) {
       return true;
     }

@@ -113,7 +113,7 @@ byte *trx_undo_update_rec_get_sys_cols(
     roll_ptr_t *roll_ptr, /*!< out: roll ptr */
     ulint *info_bits
 #ifdef SCSLAB_CVC
-    ,cvc_info_cache * prev_undo_info
+    ,cvc_info_cache * prev_undo_info /*!< out: previous undo log meta-data */
 #endif	
 		);    /*!< out: info bits state */
 
@@ -249,6 +249,31 @@ bool trx_undo_prev_version_build(const rec_t *index_rec, mtr_t *index_mtr,
                                  rec_t **old_vers, mem_heap_t *v_heap,
                                  const dtuple_t **vrow, ulint v_status,
                                  lob::undo_vers_t *lob_undo);
+
+/** Build the version for consistent select worker.
+@param[in]	index_rec	clustered index record in the index tree
+@param[in]	index_mtr	mtr which contains the latch to index_rec page
+                                and purge_view
+@param[in]	rec		version of a clustered index record
+@param[in]	index		clustered index
+@param[in,out]	offsets		rec_get_offsets(rec, index)
+@param[in]	heap		memory heap from which the memory needed is
+                                allocated
+@param[out]	old_vers	previous version, or NULL if rec is the first
+                                inserted version, or if history data has been
+                                deleted
+@param[in]	v_heap		memory heap used to create vrow dtuple if it is
+                                not yet created. This heap diffs from "heap"
+                                above in that it could be
+                                prebuilt->old_vers_heap for selection
+@param[out]	vrow		virtual column info, if any
+@param[in]	v_status	status determine if it is going into this
+                                function by purge thread or not. And if we read
+                                "after image" of undo log has been rebuilt
+@param[in]	lob_undo	LOB undo information.
+@param[in]  view      read view of select worker.
+@return if the version was built, or if it was an insert or the table
+has been rebuilt, return true, otherwise return false */
 
 bool trx_undo_prev_version_build_in_vridge(const rec_t *index_rec,
 																					 mtr_t *index_mtr,
@@ -422,23 +447,29 @@ const byte *trx_undo_rec_get_multi_value(const byte *ptr, dfield_t *field,
                                         mem_heap_t *heap);
 
 #ifdef SCSLAB_CVC
-bool trx_get_next_same_level_ridge(
-  dict_index_t * index,
-  cvc_level_t new_level,
-  cvc_info_cache * prev_undo_info);
+/** When updating records, get a next equal or higher level undo log metadata.
+ @return whether it is successful to get the previous undo log or not. */
+bool trx_get_next_equal_or_higher_level_ridge(
+  dict_index_t * index,             /*!< in: clustered index */
+  cvc_level_t new_level,            /*!< in: new level after coin tossing*/
+  cvc_info_cache * prev_undo_info); /*!< out: previous undo log metadata */
 
+
+/** Get the version of a clustered index record that a select worker should see.
+ @return start location pointer of version record data */
 byte* trx_get_undo_rec_following_ridge(
-  const dict_index_t * index,
-  const rec_t * rec,
-  ulint * offsets,
-  mem_heap_t ** pheap,
-  roll_ptr_t roll_ptr,
-  trx_id_t trx_id,
-  ReadView * view,
-  trx_id_t * ptrx_id,
-  roll_ptr_t * proll_ptr,
-  ulint * ptype,
-  ulint * pinfo_bits);
+  const dict_index_t * index, /*< in : clustered index */
+  mem_heap_t ** pheap,        /*< in/out : memory heap from which the memory
+                                           needed is allocated */
+  roll_ptr_t roll_ptr,        /*< in :  rollback pointer in the record */
+  trx_id_t trx_id,            /*< in : trx id in the record */
+  ReadView * view,            /*< in : read view of select query */
+  trx_id_t * ptrx_id,         /*< out : the id of version that select worker 
+                                        should see*/
+  roll_ptr_t * proll_ptr,     /*< out : rollback pointer of version that select
+                                        worker should see*/
+  ulint * ptype,              /*< out : undo log type */
+  ulint * pinfo_bits);        /*< out : undo log information bits */
 
 #endif
 #include "trx0rec.ic"
