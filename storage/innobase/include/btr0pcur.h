@@ -139,6 +139,11 @@ enum btr_pcur_pos_t {
 
 #define btr_pcur_get_up_match(p) (p)->get_up_match()
 
+#ifdef HYU_SCSLAB
+#define btr_pcur_get_next_user_rec(p, m, r, b, i) \
+  ((p)->get_next_user_rec(m, r, b, i) == DB_SUCCESS)
+#endif /* HYU_SCSLAB */
+
 /** Position state of persistent B-tree cursor. */
 enum pcur_pos_t {
 
@@ -394,6 +399,10 @@ struct btr_pcur_t {
   @return true if on user record. */
   bool is_on_user_rec() const;
 
+#ifdef SCSLAB_CVC
+	bool is_on_user_rec(const rec_t*) const;
+#endif /* SCSLAB_CVC */
+
   /** Checks if the persistent cursor is before the first user record
   in the index tree.
   @param[in,out]	mtr		      Mini transaction.
@@ -452,6 +461,12 @@ struct btr_pcur_t {
 
   /** Moves the persistent cursor to the infimum record on the same page. */
   void move_before_first_on_page();
+
+#ifdef SCSLAB_CVC
+	/** Get next user record with holding latch. It doesn't move page cursor. */
+	dberr_t get_next_user_rec(mtr_t* mtr, rec_t*&, buf_block_t*&, dict_index_t* index);
+#endif /* SCSLAB_CVC */
+
 #endif /* !UNIV_HOTBACKUP */
 
   /** The position of the cursor is stored by taking an initial segment
@@ -889,6 +904,15 @@ inline bool btr_pcur_t::is_on_user_rec() const {
   return (!is_before_first_on_page() && !is_after_last_on_page());
 }
 
+#ifdef SCSLAB_CVC
+inline bool btr_pcur_t::is_on_user_rec(const rec_t* rec) const {
+  ut_ad(m_pos_state == BTR_PCUR_IS_POSITIONED);
+  ut_ad(m_latch_mode != BTR_NO_LATCHES);
+
+  return (!page_rec_is_infimum(rec) && !page_rec_is_supremum(rec));
+}
+#endif /* SCSLAB_CVC */
+
 inline bool btr_pcur_t::is_before_first_in_tree(mtr_t *mtr) const {
   ut_ad(m_pos_state == BTR_PCUR_IS_POSITIONED);
   ut_ad(m_latch_mode != BTR_NO_LATCHES);
@@ -999,6 +1023,73 @@ inline void btr_pcur_t::move_before_first_on_page() {
 
   m_old_stored = false;
 }
+
+#ifdef SCSLAB_CVC
+inline dberr_t btr_pcur_t::move_to_next_user_rec_tmp(mtr_t *mtr, rec_t*& ret_rec, buf_block_t*& ret_block, dict_index_t* index) {
+  ut_ad(m_pos_state == BTR_PCUR_IS_POSITIONED);
+  ut_ad(m_latch_mode != BTR_NO_LATCHES);
+
+  // get page, record pointer pointed by current cursor.
+  auto cur_page = get_page();
+  auto cur_rec = get_rec();
+  auto cur_block = get_block();
+
+  auto next_page = cur_page;
+  auto next_block = cur_block;
+
+  page_no_t next_page_no;
+
+  for (;;) {
+    if (page_rec_is_supremum(cur_rec)) {
+        /*if (is_after_last_in_tree(mtr)) {
+            return (DB_END_OF_INDEX);
+        }*/
+        if (btr_page_get_next(cur_page, mtr) == FIL_NULL && page_rec_is_supremum(cur_rec)) {
+            if (cur_page != get_page()) {
+                btr_leaf_page_release(cur_block, BTR_SEARCH_LEAF, mtr);
+            }
+            return (DB_END_OF_INDEX);
+        }
+
+        // move next page
+        next_page_no = btr_page_get_next(cur_page, mtr);
+        next_block =
+            btr_block_get(page_id_t(cur_block->page.id.space(), next_page_no),
+                    cur_block->page.size, BTR_SEARCH_LEAF, get_btr_cur()->index, mtr);
+        next_page = buf_block_get_frame(next_block);
+
+        // release current page latch if it is not the page *pointed by cursor*
+        if (cur_page != get_page()) {
+            fprintf(stdout, "Get next page and release prev page latch if needed");
+            btr_leaf_page_release(cur_block, BTR_SEARCH_LEAF, mtr);
+        }
+
+        // get infimum user record
+        cur_page = next_page;
+        cur_block = next_block;
+        cur_rec = page_get_infimum_rec(buf_block_get_frame(cur_block));
+
+    } else {
+        // move to next record in page.
+        cur_rec = page_rec_get_next(cur_rec);
+    }
+
+    if (is_on_user_rec(cur_rec)) {
+        // Find the next user rec
+        rec_print(stdout, cur_rec, index);
+        // Now you have to get roll ptr for record.
+        ret_rec = cur_rec;
+        // release current page latch if it is not the page *pointed by cursor*
+        if (cur_page != get_page()) {
+            ret_block = cur_block;
+            fprintf(stdout, "Release Page latch\n");
+            //btr_leaf_page_release(cur_block, BTR_SEARCH_LEAF, mtr);
+        }
+        return (DB_SUCCESS);
+    }
+  }
+}
+#endif /* SCSLAB_CVC */
 
 inline void btr_pcur_t::reset() {
   free_rec_buf();

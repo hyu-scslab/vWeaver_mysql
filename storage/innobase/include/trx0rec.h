@@ -471,7 +471,20 @@ byte* trx_get_undo_rec_following_ridge(
   ulint * ptype,              /*< out : undo log type */
   ulint * pinfo_bits);        /*< out : undo log information bits */
 
-#endif
+/** Get k-ridge roll pointer
+ @return k-ridge roll pointer */
+roll_ptr_t trx_undo_get_k_ridge_roll_ptr(
+	btr_pcur_t* pcur,						/*< in : page cursor */
+	mtr_t* mtr,									/*< in : mtr or NULL */	
+	trx_t* trx,									/*< in : transaction */
+	dict_index_t* index);				/*< in : index */
+
+void trx_undo_set_next_roll_ptr(
+	roll_ptr_t roll_ptr,
+	mtr_t* mtr);
+// JAESEON
+#endif /* SCSLAB_CVC */
+
 #include "trx0rec.ic"
 
 #endif /* !UNIV_HOTBACKUP */

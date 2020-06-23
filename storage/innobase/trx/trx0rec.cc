@@ -142,7 +142,165 @@ void trx_undo_get_prev_undo_info(roll_ptr_t roll_ptr,
 }
 
 
-#endif
+// JAESEON
+/** Get ~~~~
+	@param[in] ~~~
+	@param[out]
+	@return ~~ */
+roll_ptr_t trx_undo_get_k_ridge_roll_ptr(
+				btr_pcur_t* pcur, 
+				mtr_t* mtr, 
+				trx_t* trx, 
+				dict_index_t* index) 
+{
+  roll_ptr_t ret_roll_ptr = 0;
+  rec_t* ret_rec = nullptr;
+  buf_block_t* ret_block = nullptr;
+  mem_heap_t *heap = nullptr;
+  mem_heap_t *offset_heap = nullptr;
+  const rec_t* version;
+  rec_t* prev_version;
+  ulint offsets_[REC_OFFS_NORMAL_SIZE];
+  ulint* offsets = offsets_;
+  rec_offs_init(offsets_);
+
+  ib::warn() << "[JS] Temp_func start\n";
+  if (btr_pcur_get_next_user_rec(pcur, mtr, ret_rec, ret_block, index)) {
+      fprintf(stdout, "Find next rec\n");
+      ut_a(ret_rec != nullptr);
+  } else {
+      printf("Cannot find next rec\n");
+  }
+
+  if (!ret_rec) { // 0 is good for nothing ??
+      return ret_roll_ptr;
+  }
+  // In here, It should be guaranteed that we have a S-latch on target page.
+  //          If ret_rec != null_ptr, we have a next user record for k-ridge.
+
+  /**
+    1. Get a ReadView from transaction's or Make a temporary view
+    **/
+
+  ReadView* view;
+  if (MVCC::is_view_active(trx->read_view)) {
+      view = trx->read_view;
+  } else {
+      view = new ReadView();
+      ut_a(view != nullptr);
+      trx_sys->mvcc->view_open(view);
+  }
+
+  /**
+    2. Get a transaction id in the next key record.
+    **/
+  trx_id_t trx_id = rec_get_trx_id(ret_rec, index);
+
+  /**
+    3. Do visibility check.
+    If you can see the record in data page, you simply use its roll pointer.
+    Else you have to get undo log record and build previous version.
+
+    XXX: Now we don't think about purge_sys->view, however actually
+         keeping the transaction id that made undo log is necessary.
+    **/
+
+  ib::warn() << "[JS] Get roll ptr\n";
+  offsets = rec_get_offsets(ret_rec, index, offsets, ULINT_UNDEFINED, &offset_heap);
+  ib::warn() << "[JS] offs success\n";
+  ret_roll_ptr = row_get_rec_roll_ptr(ret_rec, index, offsets);
+
+  // If roll pointer is not valid, return zero immediately.
+  if (trx_undo_roll_ptr_is_insert(ret_roll_ptr)) {
+      ret_roll_ptr = 0;
+      goto func_exit;
+  }
+
+  if (view->changes_visible(trx_id, index->table->name)) {
+      goto func_exit;
+  }
+
+  /**
+    4. Build previous version with roll pointer.
+       This is simply row_vers_build_for_consistent_read() function.
+
+    XXX: In normal case, previous version can be purged. 
+    **/
+  ib::warn() << "[JS] Build it !\n";
+  heap = mem_heap_create(1024);
+  version = ret_rec;
+
+  (void)trx_undo_prev_version_build(ret_rec, mtr, version, index, offsets, heap,
+          &prev_version, NULL, NULL, 0, nullptr); // vrow & lob_undo
+
+  ut_a(prev_version != nullptr);
+  offsets = rec_get_offsets(prev_version, index, offsets, ULINT_UNDEFINED, &offset_heap);
+
+  ret_roll_ptr = row_get_rec_roll_ptr(prev_version, index, offsets);
+
+  if (trx_undo_roll_ptr_is_insert(ret_roll_ptr)) {
+      ret_roll_ptr = 0;
+  }
+
+func_exit:
+
+  if (heap) {
+      mem_heap_free(heap);
+  }
+
+  if (offset_heap) {
+      mem_heap_free(offset_heap);
+  }
+
+  if (ret_block != nullptr) {
+      fprintf(stdout, "Relase page latch outside");
+      btr_leaf_page_release(ret_block, BTR_SEARCH_LEAF, mtr);
+  }
+
+  if (!MVCC::is_view_active(trx->read_view)) {
+      delete view;
+  }
+
+  ib::warn() << "[JS] Temp Func close : " << ret_roll_ptr << '\n';
+  return ret_roll_ptr;
+}
+
+//?? Where JAESEON
+void trx_undo_set_next_roll_ptr(roll_ptr_t roll_ptr, mtr_t* mtr)
+{
+  ibool is_insert;
+  ulint rseg_id, offset;
+  page_no_t page_no;
+  page_t* undo_page;
+  space_id_t space_id;
+  bool found;
+  trx_undo_rec_t * undo_rec;
+
+  trx_undo_decode_roll_ptr(roll_ptr, &is_insert, &rseg_id, 
+                           &page_no, &offset);
+  space_id = trx_rseg_id_to_space_id(rseg_id, false);
+
+  const page_size_t& page_size = fil_space_get_page_size(space_id, &found);
+  ut_ad(found);
+
+  mtr_start(mtr);
+
+  undo_page = trx_undo_page_get(page_id_t(space_id, page_no), page_size, mtr);
+
+	// Find the NEXT_ROLL_PTR_OFFSET from undo_page + offset.
+
+	// Modify it.
+
+	// Redo log for modification.
+
+  trx_undof_page_add_undo_rec_log(undo_page, /*first_free, ptr - undo_page*/, mtr);
+
+  mtr_commit(mtr);
+
+  return undo_rec;
+}
+
+#endif /* SCSLAB_CVC */
 
 
 /*=========== UNDO LOG RECORD CREATION AND DECODING ====================*/
