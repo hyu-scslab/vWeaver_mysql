@@ -1439,16 +1439,18 @@ static ulint trx_undo_page_report_modify(
   /** undo log structure in vridge if it is user record's undo log
    *** It is saved by compressed form. ***
    ----------- Additional field of vridge -----------
-   1 byte - current level in frugal skip list. This byte is used to distinguish
+   level - current level in frugal skip list. This byte is used to distinguish
             whether this undo log is of user record or not. (!= 0)
-   1 byte - level that can be checked when following vridge rollback pointer.
-   8 byte - the version of undo log checked by following vridge
-   8 byte - the rollback pointer of vridge
-   8 byte - the prev version of undo log by following origin rollback pointer
-   8 byte - the prev version of undo log by following vridge
+   vridge level - level that can be checked when following vridge rollback 
+                 pointer.
+   vridge_trx_id - the version of undo log checked by following vridge
+   vridge_roll_ptr - the rollback pointer of vridge
+   prev_trx_id - the prev version of undo log by following origin rollback 
+                 pointer
+   vridge_prev_trx_id - the prev version of undo log by following vridge
    ----------- Original filed -----------
-   8 byte - the version of this undo log
-   8 byte - the rollback pointer of this undo log
+   trx_id - the version of this undo log
+   roll_ptr - the rollback pointer of this undo log
    --------------------------------------
    */
 
@@ -2463,6 +2465,66 @@ byte *trx_undo_parse_erase_page_end(
   return (ptr);
 }
 
+#ifdef SCSLAB_CVC
+
+UNIV_INLINE
+void trx_undo_get_vridge_info_from_prev_undo(rec_t * rec,
+                                             dict_index_t * index,
+                                             const ulint *offsets,
+                                             cvc_info_cache& prev_undo_info) 
+{
+  ulint flen;
+  byte coin = rand() %2;
+  roll_ptr_t rec_roll_ptr;
+  trx_id_t rec_trx_id, prev_trx_id;
+  rec_roll_ptr = row_get_rec_roll_ptr(rec, index, offsets);
+
+  if (trx_undo_roll_ptr_is_insert(rec_roll_ptr)) {
+    // if record is first version
+    rec_roll_ptr = VRIDGE_NULL;
+    rec_trx_id = VRIDGE_NULL;
+    prev_trx_id =  VRIDGE_NULL;
+    prev_undo_info.level = VRIDGE_NULL;
+    prev_undo_info.vridge_level = VRIDGE_NULL;
+  } else {
+    // if record is not first version, read undo log contents.
+    trx_undo_get_prev_undo_info(rec_roll_ptr, &prev_trx_id, 
+                                &prev_undo_info);
+    rec_trx_id = trx_read_trx_id(rec_get_nth_field(rec, offsets,
+                                 index->get_sys_col_pos(DATA_TRX_ID),
+                                 &flen));
+  }
+
+  if (coin) {
+     prev_undo_info.level++;
+     if (prev_undo_info.level <= prev_undo_info.vridge_level) {
+      prev_undo_info.prev_trx_id = prev_trx_id;
+     } else {
+      if (prev_undo_info.vridge_level 
+          && trx_get_next_equal_or_higher_level_ridge(index, 
+                                           prev_undo_info.level,
+                                           &prev_undo_info)) {
+          prev_undo_info.prev_trx_id = prev_trx_id;
+      } else {
+        prev_undo_info.vridge_level = VRIDGE_NULL;
+        prev_undo_info.vridge_trx_id = VRIDGE_NULL;
+        prev_undo_info.vridge_roll_ptr = VRIDGE_NULL;
+        prev_undo_info.vridge_prev_trx_id = VRIDGE_NULL;
+        prev_undo_info.prev_trx_id = prev_trx_id;
+      }
+    }
+  } else {
+    prev_undo_info.vridge_level = prev_undo_info.level; 
+    prev_undo_info.level = GROUND_LEVEL;
+    prev_undo_info.vridge_trx_id = rec_trx_id;
+    prev_undo_info.vridge_roll_ptr = rec_roll_ptr;
+    prev_undo_info.vridge_prev_trx_id = prev_trx_id;
+    prev_undo_info.prev_trx_id = prev_trx_id;
+  }
+}
+
+#endif
+
 #ifndef UNIV_HOTBACKUP
 /** Writes information to an undo log about an insert, update, or a delete
  marking of a clustered index record. This information is used in a rollback of
@@ -2515,7 +2577,6 @@ dberr_t trx_undo_report_row_operation(
 
   ut_ad(thr);
 
-
   trx = thr_get_trx(thr);
 
   bool is_temp_table = index->table->is_temporary();
@@ -2539,57 +2600,11 @@ dberr_t trx_undo_report_row_operation(
   mtr_start(&mtr);
 
 #ifdef SCSLAB_CVC
+  // search undo log to find out vridge info
   if (rec && op_type == TRX_UNDO_MODIFY_OP) {
-    bool is_user_record = rec_is_user_record(rec, index);
-    if (is_user_record) {
-      ulint flen;
-      byte coin = rand() %2;
-      roll_ptr_t rec_roll_ptr;
-      trx_id_t rec_trx_id, prev_trx_id;
-      rec_roll_ptr = row_get_rec_roll_ptr(rec, index, offsets);
-
-      if (trx_undo_roll_ptr_is_insert(rec_roll_ptr)) {
-        // if record is first version
-        rec_roll_ptr = VRIDGE_NULL;
-        rec_trx_id = VRIDGE_NULL;
-        prev_trx_id =  VRIDGE_NULL;
-        prev_undo_info.level = VRIDGE_NULL;
-        prev_undo_info.vridge_level = VRIDGE_NULL;
-      } else {
-        // if  record is not first version, read undo log contents.
-        trx_undo_get_prev_undo_info(rec_roll_ptr, &prev_trx_id, 
-                                    &prev_undo_info);
-        rec_trx_id = trx_read_trx_id(rec_get_nth_field(rec, offsets,
-                                     index->get_sys_col_pos(DATA_TRX_ID),
-                                     &flen));
-      }
-
-      if (coin) {
-        prev_undo_info.level++;
-        if (prev_undo_info.level <= prev_undo_info.vridge_level) {
-          prev_undo_info.prev_trx_id = prev_trx_id;
-        } else {
-          if (prev_undo_info.vridge_level 
-              && trx_get_next_equal_or_higher_level_ridge(index, 
-                                               prev_undo_info.level,
-                                               &prev_undo_info)) {
-              prev_undo_info.prev_trx_id = prev_trx_id;
-          } else {
-            prev_undo_info.vridge_level = VRIDGE_NULL;
-            prev_undo_info.vridge_trx_id = VRIDGE_NULL;
-            prev_undo_info.vridge_roll_ptr = VRIDGE_NULL;
-            prev_undo_info.vridge_prev_trx_id = VRIDGE_NULL;
-            prev_undo_info.prev_trx_id = prev_trx_id;
-          }
-        }
-      } else {
-        prev_undo_info.vridge_level = prev_undo_info.level; 
-        prev_undo_info.level = GROUND_LEVEL;
-        prev_undo_info.vridge_trx_id = rec_trx_id;
-        prev_undo_info.vridge_roll_ptr = rec_roll_ptr;
-        prev_undo_info.vridge_prev_trx_id = prev_trx_id;
-        prev_undo_info.prev_trx_id = prev_trx_id;
-      }
+    if (rec_is_user_record(rec, index)) {
+      trx_undo_get_vridge_info_from_prev_undo(rec, index, offsets, 
+                                              prev_undo_info);
     }
   }
 #endif
@@ -3052,6 +3067,7 @@ bool trx_undo_prev_version_build_in_vridge(
   ut_ad(!index->table->skip_alter_undo);
 
   if (is_user_record) {
+    // Get undo record using vridge
     ptr = trx_get_undo_rec_following_ridge(index, heap, rec_roll_ptr, 
                                            rec_trx_id, view,  &trx_id, 
                                            &roll_ptr, &type, &info_bits);

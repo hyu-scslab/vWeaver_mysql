@@ -1335,25 +1335,19 @@ dberr_t row_vers_build_for_consistent_read(
     ut_a(!rec_offs_any_null_extern(prev_version, *offsets));
 #endif /* UNIV_DEBUG || UNIV_BLOB_LIGHT_DEBUG */
 
-    //trx_id = row_get_rec_trx_id(prev_version, index, *offsets);
+    buf = static_cast<byte *>(mem_heap_alloc(in_heap,
+                                             rec_offs_size(*offsets)));
 
-    //if (view->changes_visible(trx_id, index->table->name)) {
-      buf = static_cast<byte *>(mem_heap_alloc(in_heap,
-                                               rec_offs_size(*offsets)));
+    *old_vers = rec_copy(buf, prev_version, *offsets);
+    rec_offs_make_valid(*old_vers, index, *offsets);
 
-      *old_vers = rec_copy(buf, prev_version, *offsets);
-      rec_offs_make_valid(*old_vers, index, *offsets);
+    if (vrow && *vrow) {
+      *vrow = dtuple_copy(*vrow, in_heap);
+      dtuple_dup_v_fld(*vrow, in_heap);
+    }
 
-      if (vrow && *vrow) {
-        *vrow = dtuple_copy(*vrow, in_heap);
-        dtuple_dup_v_fld(*vrow, in_heap);
-      }
-
-      mem_heap_free(heap);
-      return err;
-    //}
-
-    //version = prev_version;
+    mem_heap_free(heap);
+    return err;
 
   } else {
 #else /* SCSLAB_CVC */
