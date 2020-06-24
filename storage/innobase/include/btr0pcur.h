@@ -139,10 +139,11 @@ enum btr_pcur_pos_t {
 
 #define btr_pcur_get_up_match(p) (p)->get_up_match()
 
-#ifdef HYU_SCSLAB
+#ifdef SCSLAB_CVC 
 #define btr_pcur_get_next_user_rec(p, m, r, b, i) \
   ((p)->get_next_user_rec(m, r, b, i) == DB_SUCCESS)
-#endif /* HYU_SCSLAB */
+
+#endif /* SCSLAB_CVC */
 
 /** Position state of persistent B-tree cursor. */
 enum pcur_pos_t {
@@ -1025,7 +1026,7 @@ inline void btr_pcur_t::move_before_first_on_page() {
 }
 
 #ifdef SCSLAB_CVC
-inline dberr_t btr_pcur_t::move_to_next_user_rec_tmp(mtr_t *mtr, rec_t*& ret_rec, buf_block_t*& ret_block, dict_index_t* index) {
+inline dberr_t btr_pcur_t::get_next_user_rec(mtr_t *mtr, rec_t*& ret_rec, buf_block_t*& ret_block, dict_index_t* index) {
   ut_ad(m_pos_state == BTR_PCUR_IS_POSITIONED);
   ut_ad(m_latch_mode != BTR_NO_LATCHES);
 
@@ -1041,10 +1042,8 @@ inline dberr_t btr_pcur_t::move_to_next_user_rec_tmp(mtr_t *mtr, rec_t*& ret_rec
 
   for (;;) {
     if (page_rec_is_supremum(cur_rec)) {
-        /*if (is_after_last_in_tree(mtr)) {
-            return (DB_END_OF_INDEX);
-        }*/
-        if (btr_page_get_next(cur_page, mtr) == FIL_NULL && page_rec_is_supremum(cur_rec)) {
+        
+				if (btr_page_get_next(cur_page, mtr) == FIL_NULL && page_rec_is_supremum(cur_rec)) {
             if (cur_page != get_page()) {
                 btr_leaf_page_release(cur_block, BTR_SEARCH_LEAF, mtr);
             }
@@ -1076,14 +1075,10 @@ inline dberr_t btr_pcur_t::move_to_next_user_rec_tmp(mtr_t *mtr, rec_t*& ret_rec
 
     if (is_on_user_rec(cur_rec)) {
         // Find the next user rec
-        rec_print(stdout, cur_rec, index);
-        // Now you have to get roll ptr for record.
         ret_rec = cur_rec;
         // release current page latch if it is not the page *pointed by cursor*
         if (cur_page != get_page()) {
             ret_block = cur_block;
-            fprintf(stdout, "Release Page latch\n");
-            //btr_leaf_page_release(cur_block, BTR_SEARCH_LEAF, mtr);
         }
         return (DB_SUCCESS);
     }

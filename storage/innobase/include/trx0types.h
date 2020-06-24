@@ -162,6 +162,9 @@ typedef ib_id_t undo_no_t;
 /** Extra space to add to undo log in vridge structure*/
 #define VRIDGE_ADDITIONAL_SPACE_IN_UNDO 40
 
+/** Extra space for k-ridge */
+#define KRIDGE_UNDO_SPACE 16
+
 /** Coin toss level identifier */
 typedef byte cvc_level_t;
 /** Atructure to hold additional information for vridge*/
@@ -175,6 +178,10 @@ typedef struct __cvc_info_cache__
   trx_id_t prev_trx_id;        /* the id of trx of undo log to follow origin
                                   rollback pointer*/
   roll_ptr_t vridge_roll_ptr;  /* the rollback pointer to follow vridge*/
+
+	roll_ptr_t next_roll_ptr;
+	roll_ptr_t kridge_roll_ptr;
+
 } cvc_info_cache;
 #endif
 
