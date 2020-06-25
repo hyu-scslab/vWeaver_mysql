@@ -142,16 +142,13 @@ void trx_undo_get_prev_undo_info(roll_ptr_t roll_ptr,
 }
 
 
-// JAESEON
-/** Get ~~~~
-	@param[in] ~~~
-	@param[out]
-	@return ~~ */
+/** Find the rollback pointer that indicates next key's last committed version.
+	@return k-ridge rollback pointer. */
 roll_ptr_t trx_undo_get_k_ridge_roll_ptr(
-				btr_pcur_t* pcur, 
-				mtr_t* mtr, 
-				trx_t* trx, 
-				dict_index_t* index) 
+				btr_pcur_t* pcur,				/*!< in: cursor on the record to update */
+				mtr_t* mtr, 						/*!< in/out: mini-transaction */
+				trx_t* trx, 						/*!< in: transaction */ 
+				dict_index_t* index) 		/*!< in: index of record that pointed by cursor */
 {
   roll_ptr_t ret_roll_ptr = 0;
   rec_t* ret_rec = nullptr;
@@ -170,19 +167,19 @@ roll_ptr_t trx_undo_get_k_ridge_roll_ptr(
       ut_a(ret_rec != nullptr);
   }
 
-  if (!ret_rec) { // 0 is good for nothing ??
+  if (!ret_rec) {
 			goto func_exit;
   }
-  // In here, It should be guaranteed that we have a S-latch on target page.
+  // In here, It should be guaranteed that we have a latch on target page.
   //          If ret_rec != null_ptr, we have a next user record for k-ridge.
 
   /**
 		1. Make a transaction's read_view if needed.
 		XXX: You should carefully think about trade-off between # of read-views and global mutex
     **/
-
 	view = trx_assign_read_view(trx);
 	ut_a(view != nullptr); 
+
   /**
     2. Get a transaction id in the next key record.
     **/
@@ -193,19 +190,19 @@ roll_ptr_t trx_undo_get_k_ridge_roll_ptr(
     If you can see the record in data page, you simply use its roll pointer.
     Else you have to get undo log record and build previous version.
 
-    XXX: Now we don't think about purge_sys->view, however actually
+    XXX: Now we don't care about purge_sys->view, however actually
          keeping the transaction id that made undo log is necessary.
     **/
-
   offsets = rec_get_offsets(ret_rec, index, offsets, ULINT_UNDEFINED, &offset_heap);
   ret_roll_ptr = row_get_rec_roll_ptr(ret_rec, index, offsets);
 
-  // If roll pointer is not valid, return zero immediately.
+	// If the rollback pointer is insert, return immediately.
   if (trx_undo_roll_ptr_is_insert(ret_roll_ptr)) {
       ret_roll_ptr = 0;
       goto func_exit;
   }
 
+	// If the record is visible, return its roll pointer
   if (view->changes_visible_ignore_creator(trx_id, index->table->name)) {
       goto func_exit;
   }
@@ -224,13 +221,14 @@ roll_ptr_t trx_undo_get_k_ridge_roll_ptr(
 		heap = mem_heap_create(1024);
   
 		(void)trx_undo_prev_version_build(ret_rec, mtr, version, index, offsets, heap,
-          &prev_version, NULL, NULL, 0, nullptr); // vrow & lob_undo
+          &prev_version, NULL, NULL, 0, nullptr);
 
   	ut_a(prev_version != nullptr);
 
 		if (prev_heap != NULL) {
 			mem_heap_free(prev_heap);
 		}
+
   	offsets = rec_get_offsets(prev_version, index, offsets, ULINT_UNDEFINED, &offset_heap);
 
 		if (row_get_rec_trx_id(prev_version, index, offsets) == trx_id) {
@@ -259,11 +257,16 @@ func_exit:
   if (ret_block != nullptr) {
       btr_leaf_page_release(ret_block, BTR_SEARCH_LEAF, mtr);
   }
+
   return ret_roll_ptr;
 }
 
-//?? Where JAESEON
-static void trx_undo_set_next_roll_ptr(roll_ptr_t roll_ptr, roll_ptr_t next_roll_ptr, mtr_t* mtr)
+/** Set next roll pointer loacted in undo log record to next_roll_ptr
+	See trx_undo_rec_get_pars() & trx_undo_update_rec_get_sys_cols() */
+static void trx_undo_set_next_roll_ptr(
+				roll_ptr_t roll_ptr, 				/*< in: rollback pointer in undo log record */
+				roll_ptr_t next_roll_ptr, 	/*< in: next rollback pointer to be set */
+				mtr_t* mtr)									/*< in/out: mini-transaction */
 {
   ibool is_insert;
   ulint rseg_id, offset;
@@ -285,10 +288,8 @@ static void trx_undo_set_next_roll_ptr(roll_ptr_t roll_ptr, roll_ptr_t next_roll
 
   undo_page = trx_undo_page_get(page_id_t(space_id, page_no), page_size, mtr);
 
-	// Find the NEXT_ROLL_PTR_OFFSET from undo_page + offset.
+	/* Set ptr to undo log record */
 	ptr = undo_page + offset;
-
-	/** trx_undo_rec_get_pars & trx_undo_update_rec_get_sys_cols */
 
 	/* 2 bytes for the pointer to the previous undo log record */
 	ptr += 2;
@@ -309,7 +310,7 @@ static void trx_undo_set_next_roll_ptr(roll_ptr_t roll_ptr, roll_ptr_t next_roll
 	/* 1 byte for the info bits */
 	ptr += 1;
 
-	/* V-ridge info */
+	/* Undo log data for V-ridge */
 	/* 1 byte for user record */
 	ut_a(mach_read_from_1(ptr) != 0);
 	ptr += 1;
@@ -1548,8 +1549,7 @@ static ulint trx_undo_page_report_modify(
   ut_ad(first_free <= UNIV_PAGE_SIZE);
 
 #ifdef SCSLAB_CVC
-	// XXX: VRIDGE & KRIDGE variable (in trx0types.h) may be changed.
-  if (trx_undo_left(undo_page, ptr) < 50 + VRIDGE_ADDITIONAL_SPACE_IN_UNDO + KRIDGE_UNDO_SPACE) {
+  if (trx_undo_left(undo_page, ptr) < 50 + VRIDGE_ADDITIONAL_SPACE_IN_UNDO + KRIDGE_ADDITIONAL_SPACE_IN_UNDO) {
 #else
   if (trx_undo_left(undo_page, ptr) < 50) {
 #endif
@@ -2796,7 +2796,7 @@ dberr_t trx_undo_report_row_operation(
         prev_undo_info.prev_trx_id = prev_trx_id;
       }
 
-			// JAESEON:
+			/* Set kridge_roll_ptr to next key's last committed version */
 			prev_undo_info.next_roll_ptr = 0;
 			ut_a(static_cast<upd_node_t*>(thr->run_node)->pcur->get_rec() == rec);
 			prev_undo_info.kridge_roll_ptr = trx_undo_get_k_ridge_roll_ptr(
@@ -2954,6 +2954,7 @@ dberr_t trx_undo_report_row_operation(
                                   undo_ptr->rseg->space_id, page_no, offset);
 
 #ifdef SCSLAB_CVC
+			/* Set next rollback pointer to *roll_ptr */
 			if (op_type == TRX_UNDO_MODIFY_OP && rec_is_user_record(rec, index)) {
 					roll_ptr_t rec_roll_ptr = row_get_rec_roll_ptr(rec, index, offsets);
 					if(!trx_undo_roll_ptr_is_insert(rec_roll_ptr))

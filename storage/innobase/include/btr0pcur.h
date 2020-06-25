@@ -464,7 +464,7 @@ struct btr_pcur_t {
   void move_before_first_on_page();
 
 #ifdef SCSLAB_CVC
-	/** Get next user record with holding latch. It doesn't move page cursor. */
+	/** Get next user record with holding latch if needed. It doesn't move page cursor. */
 	dberr_t get_next_user_rec(mtr_t* mtr, rec_t*&, buf_block_t*&, dict_index_t* index);
 #endif /* SCSLAB_CVC */
 
@@ -1026,11 +1026,18 @@ inline void btr_pcur_t::move_before_first_on_page() {
 }
 
 #ifdef SCSLAB_CVC
-inline dberr_t btr_pcur_t::get_next_user_rec(mtr_t *mtr, rec_t*& ret_rec, buf_block_t*& ret_block, dict_index_t* index) {
+/** Find the user record next to the record on page cursor.
+	This function should not move cursor */
+inline dberr_t btr_pcur_t::get_next_user_rec(
+				mtr_t *mtr,								/*!< in/out: mini-transaction */
+				rec_t*& ret_rec,					/*!< out: next user record */
+				buf_block_t*& ret_block,	/*!< out: next user record's page block */
+				dict_index_t* index)			/*!< in: index of record */
+{
   ut_ad(m_pos_state == BTR_PCUR_IS_POSITIONED);
   ut_ad(m_latch_mode != BTR_NO_LATCHES);
 
-  // get page, record pointer pointed by current cursor.
+  // Get page, record, block from cursor
   auto cur_page = get_page();
   auto cur_rec = get_rec();
   auto cur_block = get_block();
@@ -1041,8 +1048,8 @@ inline dberr_t btr_pcur_t::get_next_user_rec(mtr_t *mtr, rec_t*& ret_rec, buf_bl
   page_no_t next_page_no;
 
   for (;;) {
+
     if (page_rec_is_supremum(cur_rec)) {
-        
 				if (btr_page_get_next(cur_page, mtr) == FIL_NULL && page_rec_is_supremum(cur_rec)) {
             if (cur_page != get_page()) {
                 btr_leaf_page_release(cur_block, BTR_SEARCH_LEAF, mtr);
@@ -1050,16 +1057,14 @@ inline dberr_t btr_pcur_t::get_next_user_rec(mtr_t *mtr, rec_t*& ret_rec, buf_bl
             return (DB_END_OF_INDEX);
         }
 
-        // move next page
         next_page_no = btr_page_get_next(cur_page, mtr);
         next_block =
             btr_block_get(page_id_t(cur_block->page.id.space(), next_page_no),
                     cur_block->page.size, BTR_SEARCH_LEAF, get_btr_cur()->index, mtr);
         next_page = buf_block_get_frame(next_block);
 
-        // release current page latch if it is not the page *pointed by cursor*
+        // Release current page latch if it is not the page *pointed by cursor*
         if (cur_page != get_page()) {
-            fprintf(stdout, "Get next page and release prev page latch if needed");
             btr_leaf_page_release(cur_block, BTR_SEARCH_LEAF, mtr);
         }
 
