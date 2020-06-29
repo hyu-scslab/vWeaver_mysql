@@ -1503,9 +1503,9 @@ static ulint trx_undo_page_report_modify(
                           index updates */
     const dtuple_t *row,  /*!< in: clustered index row contains
                           virtual column info */
-    mtr_t *mtr,            /*!< in: mtr */
+    mtr_t *mtr            /*!< in: mtr */
 #ifdef SCSLAB_CVC
-    cvc_info_cache * undo_info /*!< in: additional information written at 
+    ,cvc_info_cache * undo_info /*!< in: additional information written at 
                                      undo log in vridge structure */
 #endif
     )
@@ -2765,8 +2765,10 @@ dberr_t trx_undo_report_row_operation(
   buf_block_t *undo_block;
   trx_undo_ptr_t *undo_ptr;
   mtr_t mtr;
-  dberr_t err = DB_SUCCESS;
+  dberr_t err = DB_SUCCESS;  
+#ifdef SCSLAB_CVC
   cvc_info_cache prev_undo_info;
+#endif
 #ifdef UNIV_DEBUG
   int loop_count = 0;
 #endif /* UNIV_DEBUG */
@@ -3240,7 +3242,7 @@ bool trx_undo_prev_version_build_in_vridge(
   mtr_t *index_mtr ATTRIB_USED_ONLY_IN_DEBUG, const rec_t *rec,
   const dict_index_t *const index, ulint *offsets, mem_heap_t **heap,
   rec_t **old_vers, mem_heap_t *v_heap, const dtuple_t **vrow, ulint v_status,
-  lob::undo_vers_t *lob_undo, ReadView * view) 
+  lob::undo_vers_t *lob_undo, ReadView *view) 
 {
   DBUG_TRACE;
 
