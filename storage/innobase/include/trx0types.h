@@ -163,7 +163,7 @@ typedef ib_id_t undo_no_t;
 #define VRIDGE_ADDITIONAL_SPACE_IN_UNDO 40
 
 /** Extra space for k-ridge */
-#define KRIDGE_ADDITIONAL_SPACE_IN_UNDO 16
+#define KRIDGE_ADDITIONAL_SPACE_IN_UNDO 24
 
 /** Coin toss level identifier */
 typedef byte cvc_level_t;
@@ -180,7 +180,8 @@ typedef struct __cvc_info_cache__
   roll_ptr_t vridge_roll_ptr;  /* the rollback pointer to follow vridge*/
 
 	roll_ptr_t next_roll_ptr;		/* next rollback pointer */
-	roll_ptr_t kridge_roll_ptr;	/* kridge rollback pointer */
+	roll_ptr_t k_ridge_roll_ptr;	/* kridge rollback pointer */
+  trx_id_t next_trx_id;
 
 } cvc_info_cache;
 #endif

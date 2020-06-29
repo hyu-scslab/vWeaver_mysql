@@ -2634,8 +2634,14 @@ UNIV_INLINE MY_ATTRIBUTE((warn_unused_result)) dberr_t
     return (err);
   }
 
+#ifdef SCSLAB_CVC
+  err = trx_undo_report_row_operation(flags, TRX_UNDO_INSERT_OP, thr, index,
+                                      entry, NULL, 0, NULL, NULL, &roll_ptr, mtr);
+#else /* SCSLAB_CVC */
   err = trx_undo_report_row_operation(flags, TRX_UNDO_INSERT_OP, thr, index,
                                       entry, NULL, 0, NULL, NULL, &roll_ptr);
+#endif /* SCSLAB_CVC */
+
   if (err != DB_SUCCESS) {
     return (err);
   }
@@ -3156,10 +3162,16 @@ UNIV_INLINE MY_ATTRIBUTE((warn_unused_result)) dberr_t
   }
 
   /* Append the info about the update in the undo log */
+#ifdef SCSLAB_CVC
+  return (trx_undo_report_row_operation(flags, TRX_UNDO_MODIFY_OP, thr, index,
+                                        NULL, update, cmpl_info, rec, offsets,
+                                        roll_ptr, mtr));
 
+#else /* SCSLAB_CVC */
   return (trx_undo_report_row_operation(flags, TRX_UNDO_MODIFY_OP, thr, index,
                                         NULL, update, cmpl_info, rec, offsets,
                                         roll_ptr));
+#endif /* SCSLAB_CVC */
 }
 
 /** Writes a redo log record of updating a record in-place. */
@@ -4340,9 +4352,13 @@ dberr_t btr_cur_del_mark_set_clust_rec(
   if (err != DB_SUCCESS) {
     return (err);
   }
-
+#ifdef SCSLAB_CVC
+  err = trx_undo_report_row_operation(flags, TRX_UNDO_MODIFY_OP, thr, index,
+                                      entry, NULL, 0, rec, offsets, &roll_ptr, mtr);
+#else /* SCSLAB_CVC */
   err = trx_undo_report_row_operation(flags, TRX_UNDO_MODIFY_OP, thr, index,
                                       entry, NULL, 0, rec, offsets, &roll_ptr);
+#endif /* SCSLAB_CVC */
   if (err != DB_SUCCESS) {
     return (err);
   }

@@ -738,6 +738,12 @@ class rec_printer : public std::ostringstream {
 trx_id_t rec_get_trx_id(const rec_t *rec,          /*!< in: record */
                         const dict_index_t *index) /*!< in: clustered index */
     MY_ATTRIBUTE((warn_unused_result));
+
+#ifdef SCSLAB_CVC
+bool cmp_rec_rec_pk(const rec_t* rec1, const ulint* offsets1, const rec_t* rec2, const ulint* offsets2,
+    const dict_index_t* index);
+#endif /* SCSLAB_CVC */
+
 #endif /* UNIV_HOTBACKUP */
 
 /* Maximum lengths for the data in a physical record if the offsets

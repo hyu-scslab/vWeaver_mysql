@@ -188,10 +188,14 @@ dberr_t trx_undo_report_row_operation(
                                  marking, the record in the clustered
                                  index, otherwise NULL */
     const ulint *offsets,        /*!< in: rec_get_offsets(rec) */
-    roll_ptr_t *roll_ptr)        /*!< out: rollback pointer to the
+    roll_ptr_t *roll_ptr         /*!< out: rollback pointer to the
                                  inserted undo log record,
                                  0 if BTR_NO_UNDO_LOG
                                  flag was specified */
+#ifdef SCSLAB_CVC
+    , mtr_t* in_mtr
+#endif /* SCSLAB_CVC */
+    )
     MY_ATTRIBUTE((warn_unused_result));
 
 /** status bit used for trx_undo_prev_version_build() */
@@ -275,6 +279,7 @@ bool trx_undo_prev_version_build(const rec_t *index_rec, mtr_t *index_mtr,
 @return if the version was built, or if it was an insert or the table
 has been rebuilt, return true, otherwise return false */
 
+#ifdef SCSLAB_CVC
 bool trx_undo_prev_version_build_in_vridge(const rec_t *index_rec,
 																					 mtr_t *index_mtr,
 																					 const rec_t *rec, 
@@ -283,8 +288,9 @@ bool trx_undo_prev_version_build_in_vridge(const rec_t *index_rec,
 																					 rec_t **old_vers, mem_heap_t *v_heap,
 																					 const dtuple_t **vrow, ulint v_status,
 																					 lob::undo_vers_t *lob_undo,
-																					 ReadView * view);
+																					 ReadView * view, row_prebuilt_t* prebuilt);
 
+#endif /* SCSLAB_CVC */
 
 #endif /* !UNIV_HOTBACKUP */
 /** Parses a redo log record of adding an undo log record.
@@ -469,20 +475,30 @@ byte* trx_get_undo_rec_following_ridge(
   roll_ptr_t * proll_ptr,     /*< out : rollback pointer of version that select
                                         worker should see*/
   ulint * ptype,              /*< out : undo log type */
-  ulint * pinfo_bits);        /*< out : undo log information bits */
+  ulint * pinfo_bits,					/*< out : undo log information bits */
+	cvc_info_cache& found_info);        
 
-/** Get k-ridge roll pointer
- @return k-ridge roll pointer */
-roll_ptr_t trx_undo_get_k_ridge_roll_ptr(
-	btr_pcur_t* pcur,						/*< in : page cursor */
-	mtr_t* mtr,									/*< in : mtr or NULL */	
-	trx_t* trx,									/*< in : transaction */
-	dict_index_t* index);				/*< in : index */
 
-void trx_undo_set_next_roll_ptr(
-	roll_ptr_t roll_ptr,
-	mtr_t* mtr);
-// JAESEON
+void trx_undo_build_k_ridge_rec(
+		rec_t** old_vers,
+		ulint** offsets,
+		roll_ptr_t k_roll_ptr, 
+		mem_heap_t* heap,
+		mem_heap_t* undo_heap,
+		mem_heap_t* offset_heap,
+		trx_id_t& next_trx_id,
+		roll_ptr_t& next_roll_ptr,
+		const rec_t* rec,
+		const ulint* in_offsets,
+		const dict_index_t* index);
+
+void trx_undo_get_next_rec_from_k_ridge(
+		row_prebuilt_t* prebuilt, 
+		roll_ptr_t next_roll_ptr,
+		const rec_t* rec,
+		const ulint* offsets);
+
+
 #endif /* SCSLAB_CVC */
 
 #include "trx0rec.ic"

@@ -1027,17 +1027,16 @@ inline void btr_pcur_t::move_before_first_on_page() {
 
 #ifdef SCSLAB_CVC
 /** Find the user record next to the record on page cursor.
-	This function should not move cursor */
+    This function should not move cursor */
 inline dberr_t btr_pcur_t::get_next_user_rec(
-				mtr_t *mtr,								/*!< in/out: mini-transaction */
-				rec_t*& ret_rec,					/*!< out: next user record */
-				buf_block_t*& ret_block,	/*!< out: next user record's page block */
-				dict_index_t* index)			/*!< in: index of record */
+    mtr_t *mtr,               /*!< in/out: mini-transaction */
+    rec_t*& ret_rec,          /*!< out: next user record */
+    buf_block_t*& ret_block,  /*!< out: next user record's page block */
+    dict_index_t* index)      /*!< in: index of record */
 {
   ut_ad(m_pos_state == BTR_PCUR_IS_POSITIONED);
   ut_ad(m_latch_mode != BTR_NO_LATCHES);
 
-  // Get page, record, block from cursor
   auto cur_page = get_page();
   auto cur_rec = get_rec();
   auto cur_block = get_block();
@@ -1050,42 +1049,39 @@ inline dberr_t btr_pcur_t::get_next_user_rec(
   for (;;) {
 
     if (page_rec_is_supremum(cur_rec)) {
-				if (btr_page_get_next(cur_page, mtr) == FIL_NULL && page_rec_is_supremum(cur_rec)) {
-            if (cur_page != get_page()) {
-                btr_leaf_page_release(cur_block, BTR_SEARCH_LEAF, mtr);
-            }
-            return (DB_END_OF_INDEX);
-        }
-
-        next_page_no = btr_page_get_next(cur_page, mtr);
-        next_block =
-            btr_block_get(page_id_t(cur_block->page.id.space(), next_page_no),
-                    cur_block->page.size, BTR_SEARCH_LEAF, get_btr_cur()->index, mtr);
-        next_page = buf_block_get_frame(next_block);
-
-        // Release current page latch if it is not the page *pointed by cursor*
+      if (btr_page_get_next(cur_page, mtr) == FIL_NULL && page_rec_is_supremum(cur_rec)) {
         if (cur_page != get_page()) {
-            btr_leaf_page_release(cur_block, BTR_SEARCH_LEAF, mtr);
+          btr_leaf_page_release(cur_block, BTR_SEARCH_LEAF, mtr);
         }
-
-        // get infimum user record
-        cur_page = next_page;
-        cur_block = next_block;
-        cur_rec = page_get_infimum_rec(buf_block_get_frame(cur_block));
+        return (DB_END_OF_INDEX);
+      }
+    
+      next_page_no = btr_page_get_next(cur_page, mtr);
+      next_block =
+        btr_block_get(page_id_t(cur_block->page.id.space(), next_page_no),
+                    cur_block->page.size, BTR_SEARCH_LEAF, get_btr_cur()->index, mtr);
+      next_page = buf_block_get_frame(next_block);
+    
+      /* Release current page latch if it is not the page *pointed by cursor* */
+      if (cur_page != get_page()) {
+        btr_leaf_page_release(cur_block, BTR_SEARCH_LEAF, mtr);
+      }
+    
+      cur_page = next_page;
+      cur_block = next_block;
+      cur_rec = page_get_infimum_rec(buf_block_get_frame(cur_block));
 
     } else {
-        // move to next record in page.
-        cur_rec = page_rec_get_next(cur_rec);
+      cur_rec = page_rec_get_next(cur_rec);
     }
 
     if (is_on_user_rec(cur_rec)) {
-        // Find the next user rec
-        ret_rec = cur_rec;
-        // release current page latch if it is not the page *pointed by cursor*
-        if (cur_page != get_page()) {
-            ret_block = cur_block;
-        }
-        return (DB_SUCCESS);
+      ret_rec = cur_rec;
+      /* Set return block to current block to release page latch */
+      if (cur_page != get_page()) {
+        ret_block = cur_block;
+      }
+      return (DB_SUCCESS);
     }
   }
 }

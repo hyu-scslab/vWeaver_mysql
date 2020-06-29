@@ -887,6 +887,62 @@ struct row_prebuilt_t {
   @return true iff duplicated values should be allowed */
   bool allow_duplicates() { return (replace || on_duplicate_key_update); }
 
+#ifdef SCSLAB_CVC
+ public:
+
+	// JAESEON: Maybe we should set this vars in _vridge_list .. ?
+    struct {
+      bool is_valid{false};
+      bool init_offset{false};
+      
+      rec_t* rec{nullptr};
+      roll_ptr_t next_roll_ptr{0};
+      trx_id_t next_trx_id{0};
+      
+      ulint offsets_[REC_OFFS_NORMAL_SIZE];
+      ulint* offsets{nullptr};
+      
+      mem_heap_t* offset_heap{nullptr};
+      mem_heap_t* heap{nullptr};
+      mem_heap_t* undo_heap{nullptr};
+    } k_ridge_info;
+
+  void init_k_ridge_vars() {
+    k_ridge_info.is_valid = false;
+    k_ridge_info.rec = nullptr;
+    k_ridge_info.next_roll_ptr = 0;
+    k_ridge_info.next_trx_id = 0;
+    
+    if (!k_ridge_info.init_offset) {
+      k_ridge_info.init_offset = true;
+      k_ridge_info.offsets = k_ridge_info.offsets_;
+      rec_offs_init(k_ridge_info.offsets_);
+    }
+    
+    if (!k_ridge_info.offset_heap) {
+      k_ridge_info.offset_heap = mem_heap_create(1024);
+    } else {
+      mem_heap_empty(k_ridge_info.offset_heap);
+    }
+    
+    if (!k_ridge_info.heap) {
+      k_ridge_info.heap = mem_heap_create(200);
+    } else {
+      mem_heap_empty(k_ridge_info.heap);
+    }
+    
+    if (!k_ridge_info.undo_heap) {
+      k_ridge_info.undo_heap = mem_heap_create(1024);
+    } else {
+      mem_heap_empty(k_ridge_info.undo_heap);
+    }
+  }
+  
+  bool k_ridge_is_valid() const {
+    return k_ridge_info.is_valid;
+  }
+#endif /* SCSLAB_CVC */
+
  private:
   /** A helper function for init_search_tuples_types() which prepares the shape
   of the tuple to match the index

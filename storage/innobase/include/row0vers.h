@@ -113,6 +113,14 @@ dberr_t row_vers_build_for_consistent_read(
     ReadView *view, mem_heap_t **offset_heap, mem_heap_t *in_heap,
     rec_t **old_vers, const dtuple_t **vrow, lob::undo_vers_t *lob_undo);
 
+#ifdef SCSLAB_CVC
+// XXX: JAESEON: There are four calling parts. Not sure.
+dberr_t row_vers_build_for_consistent_read_cvc(
+    const rec_t *rec, mtr_t *mtr, dict_index_t *index, ulint **offsets,
+    ReadView *view, mem_heap_t **offset_heap, mem_heap_t *in_heap,
+    rec_t **old_vers, const dtuple_t **vrow, lob::undo_vers_t *lob_undo, row_prebuilt_t* prebuilt);
+#endif /* SCSLAB_CVC */
+
 /** Constructs the last committed version of a clustered index record,
  which should be seen by a semi-consistent read. */
 void row_vers_build_for_semi_consistent_read(

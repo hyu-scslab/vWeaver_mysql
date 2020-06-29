@@ -1743,6 +1743,23 @@ trx_id_t rec_get_trx_id(const rec_t *rec,          /*!< in: record */
 
   return (trx_read_trx_id(trx_id));
 }
+
+
+#ifdef SCSLAB_CVC
+bool cmp_rec_rec_pk(const rec_t* rec1, const ulint* offsets1, const rec_t* rec2, const ulint* offsets2,
+    const dict_index_t* index) {
+  ulint len1, len2;
+
+  const byte* data1 = rec_get_nth_field_instant(rec1, offsets1, dict_col_get_no(index->fields->col), index, &len1);
+  const byte* data2 = rec_get_nth_field_instant(rec2, offsets2, dict_col_get_no(index->fields->col), index, &len2);
+
+  ut_a(len1 == len2);
+
+  int ret = memcmp(data1, data2, len1);
+  return (ret == 0) ? true : false;
+}
+
+#endif /* SCSLAB_CVC */
 #endif /* !UNIV_HOTBACKUP */
 
 /** Mark the nth field as externally stored.
