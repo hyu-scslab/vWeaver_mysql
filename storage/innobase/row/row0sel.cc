@@ -5319,6 +5319,9 @@ rec_loop:
       by skipping this lookup */
 
       if (rec_is_user_record(rec, index)) {
+        if (record_buffer == nullptr || match_mode == ROW_SEL_EXACT) {
+          prebuilt->init_k_ridge_vars();
+        }
         if (!prebuilt->k_ridge_is_valid()) {
           // Do nothing.
         } else if (cmp_rec_rec_pk(rec, offsets, prebuilt->k_ridge_info.rec, prebuilt->k_ridge_info.offsets, index)) {
@@ -5814,6 +5817,10 @@ rec_loop:
           }
           next_buf = prev_buf;
           err = DB_RECORD_NOT_FOUND;
+#ifdef SCSLAB_CVC
+          // TODO 
+          prebuilt->init_k_ridge_vars(); 
+#endif /* SCSLAB_CVC */
           goto normal_return;
         }
       }
