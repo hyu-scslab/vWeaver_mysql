@@ -5318,6 +5318,7 @@ rec_loop:
       high force recovery level set, we try to avoid crashes
       by skipping this lookup */
 
+#ifdef SCSLAB_CVC 
       if (rec_is_user_record(rec, index)) {
         if (record_buffer == nullptr || match_mode == ROW_SEL_EXACT) {
           prebuilt->init_k_ridge_vars();
@@ -5475,6 +5476,7 @@ rec_loop:
           /* VALIDATION DONE */
         }
       }
+#endif /* SCSLAB_CVC */
       if (srv_force_recovery < 5 &&
           !lock_clust_rec_cons_read_sees(rec, index, offsets,
                                          trx_get_read_view(trx))) {
