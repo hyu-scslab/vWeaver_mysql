@@ -211,7 +211,7 @@ static roll_ptr_t trx_undo_get_k_ridge_in_upd(
 
   /**
     4. Build previous version with roll pointer.
-       This is simply row_vers_build_for_consistent_read() function.
+    This is simple version of row_vers_build_for_consistent_read().
 
     XXX: In normal case, previous version can be purged. 
     **/
@@ -220,6 +220,7 @@ static roll_ptr_t trx_undo_get_k_ridge_in_upd(
   for (;;) {
     mem_heap_t* prev_heap = heap;
     heap = mem_heap_create(1024);
+    
     (void)trx_undo_prev_version_build(
         ret_rec, mtr, version, index, offsets, 
         heap, &prev_version, NULL, NULL, 0, nullptr);
