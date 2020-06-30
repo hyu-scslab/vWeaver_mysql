@@ -280,7 +280,6 @@ bool trx_undo_prev_version_build(const rec_t *index_rec, mtr_t *index_mtr,
 @return if the version was built, or if it was an insert or the table
 has been rebuilt, return true, otherwise return false */
 
-#ifdef SCSLAB_CVC
 bool trx_undo_prev_version_build_in_vridge(const rec_t *index_rec,
 																					 mtr_t *index_mtr,
 																					 const rec_t *rec, 
