@@ -497,7 +497,7 @@ void trx_undo_get_next_rec_from_k_ridge(
   roll_ptr_t k_ridge_roll_ptr;
 
   /* Initialize k-ridge variables in prebuilt. */
-  prebuilt->init_k_ridge_vars();
+  prebuilt->init_k_ridge_info();
 
 	/* If next rollback pointer is not valid, return immediately. */
 	if (next_roll_ptr == 0 || trx_undo_roll_ptr_is_insert(next_roll_ptr)) {
@@ -512,14 +512,14 @@ void trx_undo_get_next_rec_from_k_ridge(
   }
   
 	ut_a(!trx_undo_roll_ptr_is_insert(k_ridge_roll_ptr));
-  ut_a(prebuilt->k_ridge_info.is_valid == false);
+  ut_a(prebuilt->k_ridge_info->is_valid == false);
   
   /* Build full record and offsets in prebuilt struct. */
-  (void)trx_undo_build_k_ridge_rec(&prebuilt->k_ridge_info.rec, &prebuilt->k_ridge_info.offsets, k_ridge_roll_ptr, 
-	  prebuilt->k_ridge_info.heap, prebuilt->k_ridge_info.undo_heap, prebuilt->k_ridge_info.offset_heap, 
-    prebuilt->k_ridge_info.next_trx_id, prebuilt->k_ridge_info.next_roll_ptr, rec, offsets, prebuilt->index);
+  (void)trx_undo_build_k_ridge_rec(&prebuilt->k_ridge_info->rec, &prebuilt->k_ridge_info->offsets, k_ridge_roll_ptr, 
+	  prebuilt->k_ridge_info->heap, prebuilt->k_ridge_info->undo_heap, prebuilt->k_ridge_info->offset_heap, 
+    prebuilt->k_ridge_info->next_trx_id, prebuilt->k_ridge_info->next_roll_ptr, rec, offsets, prebuilt->index);
   
-  prebuilt->k_ridge_info.is_valid = true;
+  prebuilt->k_ridge_info->is_valid = true;
   
   return;
 }

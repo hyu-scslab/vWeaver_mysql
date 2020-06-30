@@ -44,6 +44,10 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include <set>
 #include <vector>
 
+#ifdef SCSLAB_CVC
+#include "mem0mem.h"
+#endif /* SCSLAB_CVC */
+
 //#include <unordered_set>
 
 /** printf(3) format used for printing DB_TRX_ID and other system fields */
@@ -184,7 +188,26 @@ typedef struct __cvc_info_cache__
   trx_id_t next_trx_id;
 
 } cvc_info_cache;
-#endif
+
+#define MY_REC_OFFS_NORMAL_SIZE 100 /* Same with REC_OFFS_NORAMAL SIZE in rem/rec.h */ 
+
+struct k_ridge_info_t {
+  bool is_valid;
+  bool init_offset;
+  
+  rec_t* rec;
+  roll_ptr_t next_roll_ptr;
+  trx_id_t next_trx_id;
+  
+  ulint offsets_[MY_REC_OFFS_NORMAL_SIZE];
+  ulint* offsets;
+  
+  mem_heap_t* offset_heap;
+  mem_heap_t* heap;
+  mem_heap_t* undo_heap;
+};
+
+#endif /* SCSLAB_CVC */
 
 /** Maximum transaction identifier */
 #define TRX_ID_MAX IB_ID_MAX

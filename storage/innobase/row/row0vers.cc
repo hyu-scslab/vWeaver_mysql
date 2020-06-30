@@ -1483,7 +1483,6 @@ dberr_t row_vers_build_for_consistent_read_cvc(
 
     /* Follow version ridge. A version that should be seen is contained
        in prev_version */
-
     bool purge_sees =
         trx_undo_prev_version_build_in_vridge(rec, mtr, version, index, 
                                               *offsets, &heap, &prev_version, 
@@ -1530,8 +1529,8 @@ dberr_t row_vers_build_for_consistent_read_cvc(
   mem_heap_free(heap);
   return err;
 }
-
 #endif /* SCSLAB_CVC */
+
 /** Constructs the last committed version of a clustered index record,
  which should be seen by a semi-consistent read. */
 void row_vers_build_for_semi_consistent_read(

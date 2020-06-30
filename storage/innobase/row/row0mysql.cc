@@ -802,6 +802,7 @@ Max size for PK: 16 * 8 bytes (BIGINT's size) = 128 bytes
 Max size Secondary index: 16 * 8 bytes + PK = 256 bytes. */
 #define MAX_SRCH_KEY_VAL_BUFFER 2 * (8 * MAX_REF_PARTS)
 
+#ifndef SCSLAB_CVC
 #define PREBUILT_HEAP_INITIAL_SIZE                                          \
   (sizeof(*prebuilt)                         /* allocd in this function */  \
    + DTUPLE_EST_ALLOC(search_tuple_n_fields) /* search_tuple */             \
@@ -819,6 +820,25 @@ Max size Secondary index: 16 * 8 bytes + PK = 256 bytes. */
    DTUPLE_EST_ALLOC(table->get_n_cols() + dict_table_get_n_v_cols(table)) + \
    sizeof(que_fork_t) + sizeof(que_thr_t) + sizeof(*prebuilt->pcur) +       \
    sizeof(*prebuilt->clust_pcur))
+#else /* !SCSLAB_CVC */
+#define PREBUILT_HEAP_INITIAL_SIZE                                          \
+  (sizeof(*prebuilt)                         /* allocd in this function */  \
+   + DTUPLE_EST_ALLOC(search_tuple_n_fields) /* search_tuple */             \
+   + DTUPLE_EST_ALLOC(search_tuple_n_fields) /* m_stop_tuple */             \
+   + DTUPLE_EST_ALLOC(ref_len) /* allocd in row_prebuild_sel_graph() */     \
+   + sizeof(sel_node_t) + sizeof(que_fork_t) +                              \
+   sizeof(que_thr_t) /* allocd in row_get_prebuilt_update_vector() */       \
+   + sizeof(upd_node_t) + sizeof(upd_t) +                                   \
+   sizeof(upd_field_t) * table->get_n_cols() + sizeof(que_fork_t) +         \
+   sizeof(que_thr_t)    /* allocd in row_get_prebuilt_insert_row() */       \
+   + sizeof(ins_node_t) /* mysql_row_len could be huge and we are not       \
+                        sure if this prebuilt instance is going to be       \
+                        used in inserts */                                  \
+   + (mysql_row_len < 256 ? mysql_row_len : 0) +                            \
+   DTUPLE_EST_ALLOC(table->get_n_cols() + dict_table_get_n_v_cols(table)) + \
+   sizeof(que_fork_t) + sizeof(que_thr_t) + sizeof(*prebuilt->pcur) +       \
+   sizeof(*prebuilt->clust_pcur) + sizeof(*prebuilt->k_ridge_info))
+#endif /* SCSLAB_CVC */
 
   /* Calculate size of key buffer used to store search key in
   InnoDB format. MySQL stores INTs in little endian format and
@@ -921,6 +941,12 @@ Max size Secondary index: 16 * 8 bytes + PK = 256 bytes. */
   prebuilt->m_no_prefetch = false;
   prebuilt->m_read_virtual_key = false;
 
+#ifdef SCSLAB_CVC
+  prebuilt->k_ridge_info =
+      static_cast<k_ridge_info_t *>(mem_heap_zalloc(heap, sizeof(k_ridge_info_t)));
+
+  prebuilt->init_k_ridge_info();
+#endif /* SCSLAB_CVC */
   return prebuilt;
 }
 
@@ -997,6 +1023,10 @@ void row_prebuilt_free(
   }
 
   prebuilt->m_lob_undo.destroy();
+
+#ifdef SCSLAB_CVC
+  prebuilt->free_k_ridge_info();
+#endif /* SCSLAB_CVC */
 
   mem_heap_free(prebuilt->heap);
 }
