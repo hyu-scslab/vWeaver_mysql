@@ -1237,9 +1237,6 @@ ibool row_vers_old_has_index_entry(
   }
 }
 
-///////////* compare function implementation   *////
-
-
 /** Constructs the version of a clustered index record which a consistent
  read should see. We assume that the trx id stored in rec is such that
  the consistent read should not see rec in its present version.
@@ -1272,10 +1269,9 @@ dberr_t row_vers_build_for_consistent_read(
   trx_id_t trx_id;
   mem_heap_t *heap = NULL;
   byte *buf;
-  dberr_t err;
+  dberr_t err = DB_SUCCESS;
 #ifdef SCSLAB_CVC
   bool is_user_record = rec_is_user_record(rec, index);
-	err = DB_SUCCESS; // TODO
 #endif
 
   ut_ad(index->is_clustered());
@@ -1299,8 +1295,8 @@ dberr_t row_vers_build_for_consistent_read(
   version = rec;
 
 #ifdef SCSLAB_CVC
-  //if record is user record, follow version ridge.
-  if(is_user_record) {
+  /* if record is user record, follow version ridge. */
+  if (is_user_record) {
     mem_heap_t * prev_heap = NULL;
     heap = mem_heap_create(1024);
 

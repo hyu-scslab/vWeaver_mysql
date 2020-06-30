@@ -254,6 +254,7 @@ bool trx_undo_prev_version_build(const rec_t *index_rec, mtr_t *index_mtr,
                                  const dtuple_t **vrow, ulint v_status,
                                  lob::undo_vers_t *lob_undo);
 
+#ifdef SCSLAB_CVC
 /** Build the version for consistent select worker.
 @param[in]	index_rec	clustered index record in the index tree
 @param[in]	index_mtr	mtr which contains the latch to index_rec page
@@ -291,7 +292,6 @@ bool trx_undo_prev_version_build_in_vridge(const rec_t *index_rec,
 																					 ReadView * view, row_prebuilt_t* prebuilt);
 
 #endif /* SCSLAB_CVC */
-
 #endif /* !UNIV_HOTBACKUP */
 /** Parses a redo log record of adding an undo log record.
  @return end of log record or NULL */

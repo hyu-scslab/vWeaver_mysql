@@ -1696,9 +1696,9 @@ static ulint trx_undo_page_report_modify(
                           index updates */
     const dtuple_t *row,  /*!< in: clustered index row contains
                           virtual column info */
-    mtr_t *mtr,            /*!< in: mtr */
+    mtr_t *mtr            /*!< in: mtr */
 #ifdef SCSLAB_CVC
-    cvc_info_cache * undo_info /*!< in: additional information written at 
+    ,cvc_info_cache * undo_info /*!< in: additional information written at 
                                      undo log in vridge structure */
 #endif
     )
