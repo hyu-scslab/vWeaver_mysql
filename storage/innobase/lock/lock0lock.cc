@@ -227,7 +227,7 @@ bool lock_clust_rec_cons_read_sees(
     ReadView *view)       /*!< in: consistent read view */
 {
   ut_ad(index->is_clustered());
-  ut_ad(page_rec_is_user_rec(rec));
+  //ut_ad(page_rec_is_user_rec(rec));
   ut_ad(rec_offs_validate(rec, index, offsets));
 
   /* Temp-tables are not shared across connections and multiple

@@ -5319,160 +5319,116 @@ rec_loop:
       high force recovery level set, we try to avoid crashes
       by skipping this lookup */
 
-#ifdef SCSLAB_CVC 
+#ifdef SCSLAB_CVC
+      mem_heap_t* cvc_old_vers_heap = nullptr;
       if (rec_is_user_record(rec, index)) {
-        if (!prebuilt->k_ridge_is_valid()) {
-          // Do nothing.
-        } else if (cmp_rec_rec_pk(rec, offsets, prebuilt->k_ridge_info->rec, prebuilt->k_ridge_info->offsets, index)) {
-          /* Build an old version from k-ridge record. */
-          ut_ad(prebuilt->index == index);
-          ut_ad(rec_offs_size(prebuilt->k_ridge_info->offsets) == rec_offs_size(offsets));
-          ut_ad(rec_offs_extra_size(prebuilt->k_ridge_info->offsets) == rec_offs_extra_size(offsets));
-          
-          rec_t* old_vers;
+        if (record_buffer == nullptr || match_mode == ROW_SEL_EXACT) {
+          prebuilt->k_ridge_roll_ptr = 0;
+        }
+
+        if (prebuilt->k_ridge_roll_ptr != 0) {
+          // Build k-ridge record in here.
+          ut_ad(!trx_undo_roll_ptr_is_insert(prebuilt->k_ridge_roll_ptr));
+          rec_t* k_ridge_version;
           trx_id_t next_trx_id;
           roll_ptr_t next_roll_ptr;
+          mem_heap_t* k_ridge_heap = mem_heap_create(1024);
+          ulint tmp_offsets_[REC_OFFS_NORMAL_SIZE];
+          ulint* tmp_offsets = tmp_offsets_;
+          rec_offs_init(tmp_offsets_);
           
-          if (trx->read_view->changes_visible(prebuilt->k_ridge_info->next_trx_id, index->table->name)) {
-            /* We can find a record in k-ridge or clustered index */
-            if (prebuilt->k_ridge_info->next_roll_ptr != 0) {
-              ut_a(!trx_undo_roll_ptr_is_insert(prebuilt->k_ridge_info->next_roll_ptr));
-            
-              mem_heap_t* undo_heap = mem_heap_create(1024);
-            
-              trx_undo_build_k_ridge_rec(&old_vers, &offsets, prebuilt->k_ridge_info->next_roll_ptr,
-            	  prebuilt->old_vers_heap, undo_heap, heap, next_trx_id, next_roll_ptr, rec, offsets, index);
-            
-              mem_heap_free(undo_heap);
-            
+          tmp_offsets = rec_get_offsets(rec, index, tmp_offsets, 
+                                        ULINT_UNDEFINED, &k_ridge_heap);
+          
+          (void)trx_undo_specific_version_build(
+              rec, &mtr, rec, index,tmp_offsets, 
+              k_ridge_heap, &k_ridge_version, NULL, NULL, 0, nullptr, 
+              prebuilt->k_ridge_roll_ptr, next_trx_id, next_roll_ptr); 
+          
+          /* Compare record key to k-ridge record key */
+          if (!cmp_rec_rec_pk(
+              rec, offsets, k_ridge_version, tmp_offsets, index)) {
+            mem_heap_free(k_ridge_heap);
+            goto next_rec;
+          }
+
+          if (trx->read_view->changes_visible(
+                next_trx_id, index->table->name)) {
+            /* If we can see next_trx_id, Build a version with next_roll_ptr */
+					  if (next_roll_ptr != 0) {
+              rec_t* k_ridge_next_version;
+
+              (void)trx_undo_specific_version_build(
+                  rec, &mtr, k_ridge_version, index, tmp_offsets,
+                  k_ridge_heap, &k_ridge_next_version, NULL, NULL,
+                  0, nullptr, next_roll_ptr, next_trx_id, next_roll_ptr);
+              
+              if (prebuilt->old_vers_heap) {
+                mem_heap_empty(prebuilt->old_vers_heap);
+              } else {
+                prebuilt->old_vers_heap = mem_heap_create(200);
+              }
+              
+              offsets = rec_get_offsets(k_ridge_next_version, index,
+                                        offsets, ULINT_UNDEFINED, &heap);
+              
+              byte* buf = static_cast<byte *>(mem_heap_alloc(
+                    prebuilt->old_vers_heap, rec_offs_size(offsets)));
+              
+              rec_t* old_vers = rec_copy(buf, k_ridge_next_version, offsets);
+              rec_offs_make_valid(old_vers, index, offsets);
+              
               rec = old_vers;
               prev_rec = rec;
+              
+						}
+            /* Build k-ridge rollback pointer if next_roll_ptr != 0 */
+            prebuilt->k_ridge_roll_ptr = 0;
+            trx_undo_get_next_rec_from_k_ridge(prebuilt, next_roll_ptr);
             
+					} else if (trx->read_view->changes_visible(
+               rec_get_trx_id(k_ridge_version, index), index->table->name)) {
+            /* If we can see k-ridge's trx_id, Build a k-ridge record */
+            if (prebuilt->old_vers_heap) {
+              mem_heap_empty(prebuilt->old_vers_heap);
             } else {
-              next_roll_ptr = 0;
+              prebuilt->old_vers_heap = mem_heap_create(200);
             }
-            /** Build k-ridge record if next_roll_ptr !=0
-             If next_roll_ptr == 0, k_ridge_info in prebuilt will be initialized */
-            trx_undo_get_next_rec_from_k_ridge(prebuilt, next_roll_ptr, rec, offsets);
+            
+            offsets = rec_get_offsets(k_ridge_version, index, 
+                                      offsets, ULINT_UNDEFINED, &heap);
+            
+            byte* buf = static_cast<byte *>(mem_heap_alloc(
+                  prebuilt->old_vers_heap, rec_offs_size(offsets)));
+            
+            rec_t* old_vers = rec_copy(buf, k_ridge_version, offsets);
+            rec_offs_make_valid(old_vers, index, offsets);
+            
+            rec = old_vers;
+            prev_rec = rec;
+            
+            prebuilt->k_ridge_roll_ptr = 0;
+            trx_undo_get_next_rec_from_k_ridge(prebuilt, next_roll_ptr);
+					
           } else {
-            /** Build k-ridge record in rec.
-             If transaction can see the k-ridge record, Build new k-ridge record in here. */
-            ulint extra_size = rec_offs_extra_size(offsets);
+            cvc_old_vers_heap = mem_heap_create(200);
+            	
+            offsets = rec_get_offsets(k_ridge_version, index,
+                                      offsets, ULINT_UNDEFINED, &heap);
             
-            /* XXX: This is because we build k-ridge record not lazily. */
-            ut_memcpy(prebuilt->k_ridge_info->rec - extra_size, rec - extra_size, extra_size);
+            byte* buf = static_cast<byte *>(mem_heap_alloc(
+                  cvc_old_vers_heap, rec_offs_size(offsets)));
             
-            byte* buf = static_cast<byte *>(mem_heap_alloc(prebuilt->old_vers_heap, rec_offs_size(offsets)));
-            rec = rec_copy(buf, prebuilt->k_ridge_info->rec, prebuilt->k_ridge_info->offsets);
-            rec_offs_make_valid(rec, index, offsets);
-            offsets = rec_get_offsets(rec, index, offsets, ULINT_UNDEFINED, &heap);
+            rec_t* old_vers = rec_copy(buf, k_ridge_version, offsets);
+            rec_offs_make_valid(old_vers, index, offsets);
             
-            if (trx->read_view->changes_visible(rec_get_trx_id(rec, index), index->table->name)) {
-              prev_rec = rec;
-            }
-            
-            trx_undo_get_next_rec_from_k_ridge(prebuilt, prebuilt->k_ridge_info->next_roll_ptr, rec, offsets);
-          }
-          
-          /* VALIDATION CODE */
-          mem_heap_t* debug_heap = mem_heap_create(1024);
-          byte* buf1 = static_cast<byte *>(mem_heap_alloc(debug_heap, rec_offs_size(offsets)));
-          byte* buf2 = static_cast<byte *>(mem_heap_alloc(debug_heap, rec_offs_size(offsets)));
-          
-          // rec, offsets built.
-          if (srv_force_recovery < 5 && !trx->read_view->changes_visible(rec_get_trx_id(rec, index), index->table->name)) {
-            rec_t *old_vers;
-            /* The following call returns 'offsets' associated with 'old_vers' */
-            err = row_sel_build_prev_vers_for_mysql(
-              trx->read_view, clust_index, prebuilt, rec, &offsets, &heap,
-              &old_vers, need_vrow ? &vrow : NULL, &mtr,
-              prebuilt->get_lob_undo());
-            if (err != DB_SUCCESS) {
-              goto lock_wait_or_error;
-            }
-            
-            if (old_vers == NULL) {
-              /* The row did not exist yet in
-              the read view */
-              ut_a(false);
-              goto next_rec;
-            }
             rec = old_vers;
-            prev_rec = rec;
+            
+            prebuilt->k_ridge_roll_ptr = 0;
           }
-          rec_copy(buf1, rec, offsets);
-          
-          rec = btr_pcur_get_rec(pcur);
-          offsets = rec_get_offsets(rec, index, offsets, ULINT_UNDEFINED, &heap);
-          
-          if (srv_force_recovery < 5 && !trx->read_view->changes_visible(rec_get_trx_id(rec, index), index->table->name)) {
-            rec_t *old_vers;
-            /* The following call returns 'offsets' associated with 'old_vers' */
-            err = row_sel_build_prev_vers_for_mysql(
-           	  trx->read_view, clust_index, prebuilt, rec, &offsets, &heap,
-              &old_vers, need_vrow ? &vrow : NULL, &mtr,
-           	  prebuilt->get_lob_undo());
-          
-            if (err != DB_SUCCESS) {
-              goto lock_wait_or_error;
-            }
-          
-            if (old_vers == NULL) {
-          	  /* The row did not exist yet in
-          	  the read view */
-          	  ut_a(false);
-          	  goto next_rec;
-            }
-            rec = old_vers;
-            prev_rec = rec;
-          }
-          rec_copy(buf2, rec, offsets);
-          
-          if (memcmp(buf1, buf2, rec_offs_size(offsets)) != 0) {
-            printf("K-RIDGE\n");
-            rec_print(stdout, buf1+rec_offs_extra_size(offsets), index);
-            printf("V-RIDGE\n");
-            rec_print(stdout, buf2+rec_offs_extra_size(offsets), index);
-            ut_a(false);
-          }
-          
-          ut_a(memcmp(buf1, buf2, rec_offs_size(offsets)) == 0);
-          
-          mem_heap_free(debug_heap);
-          
-          rec = btr_pcur_get_rec(pcur);
-          offsets = rec_get_offsets(rec, index, offsets, ULINT_UNDEFINED, &heap);
-          /* VALIDATION DONE */
-        } else {
-          /* TODO: Move to next record whose primary key is same as that of k-ridge record */
-          /* VALIDATION CODE */
-          if (srv_force_recovery < 5 &&
-            !lock_clust_rec_cons_read_sees(rec, index, offsets,
-                                           trx_get_read_view(trx))) {
-            rec_t *old_vers;
-            /* The following call returns 'offsets' associated with 'old_vers' */
-            err = row_sel_build_prev_vers_for_mysql(
-           	  trx->read_view, clust_index, prebuilt, rec, &offsets, &heap,
-              &old_vers, need_vrow ? &vrow : NULL, &mtr,
-           	  prebuilt->get_lob_undo());
-          
-            if (err != DB_SUCCESS) {
-              goto lock_wait_or_error;
-            }
-          
-            if (old_vers == NULL) {
-          	  /* The row did not exist yet in
-          	  the read view */
-          	  goto next_rec;
-            }
-            rec = old_vers;
-            prev_rec = rec;
-          }
-          /* It cannot see the rec in index or any old versions */
-          /* If we pass this validation, we just simply do "goto next_rec" */
-          ut_a(false); 
-          /* VALIDATION DONE */
-        }
+
+          mem_heap_free(k_ridge_heap);
+			  }
       }
 #endif /* SCSLAB_CVC */
       if (srv_force_recovery < 5 &&
@@ -5484,7 +5440,10 @@ rec_loop:
             trx->read_view, clust_index, prebuilt, rec, &offsets, &heap,
             &old_vers, need_vrow ? &vrow : NULL, &mtr,
             prebuilt->get_lob_undo());
-
+#ifdef SCSLAB_CVC
+        if (cvc_old_vers_heap)
+          mem_heap_free(cvc_old_vers_heap);
+#endif /* SCSLAB_CVC */
         if (err != DB_SUCCESS) {
           goto lock_wait_or_error;
         }
@@ -5492,7 +5451,7 @@ rec_loop:
         if (old_vers == NULL) {
           /* The row did not exist yet in
           the read view */
-
+					ut_a(false);
           goto next_rec;
         }
 
@@ -5500,9 +5459,9 @@ rec_loop:
         prev_rec = rec;
       }
 #ifdef SCSLAB_CVC
-      if (rec_is_user_record(rec, index) && (record_buffer == nullptr || match_mode == ROW_SEL_EXACT)) {
-        prebuilt->init_k_ridge_info();
-      }
+      if (rec_is_user_record(rec, index) && 
+          (record_buffer == nullptr || match_mode == ROW_SEL_EXACT))
+        prebuilt->k_ridge_roll_ptr = 0;
 #endif /* SCSLAB_CVC */
     } else {
       /* We are looking into a non-clustered index,
@@ -5822,7 +5781,7 @@ rec_loop:
           next_buf = prev_buf;
           err = DB_RECORD_NOT_FOUND;
 #ifdef SCSLAB_CVC
-          prebuilt->init_k_ridge_info(); 
+          prebuilt->k_ridge_roll_ptr = 0;
 #endif /* SCSLAB_CVC */
           goto normal_return;
         }

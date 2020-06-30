@@ -477,25 +477,16 @@ byte* trx_get_undo_rec_following_ridge(
   ulint * pinfo_bits,					/*< out : undo log information bits */
 	cvc_info_cache& found_info);        
 
-
-void trx_undo_build_k_ridge_rec(
-		rec_t** old_vers,
-		ulint** offsets,
-		roll_ptr_t k_roll_ptr, 
-		mem_heap_t* heap,
-		mem_heap_t* undo_heap,
-		mem_heap_t* offset_heap,
-		trx_id_t& next_trx_id,
-		roll_ptr_t& next_roll_ptr,
-		const rec_t* rec,
-		const ulint* in_offsets,
-		const dict_index_t* index);
+bool trx_undo_specific_version_build(
+    const rec_t *index_rec, mtr_t *index_mtr, const rec_t *rec,
+    const dict_index_t *const index, ulint *offsets, mem_heap_t *heap,
+    rec_t **old_vers, mem_heap_t *v_heap, const dtuple_t **vrow, 
+    ulint v_status, lob::undo_vers_t *lob_undo, roll_ptr_t k_ridge_roll_ptr,
+    trx_id_t& next_trx_id, roll_ptr_t& next_roll_ptr);
 
 void trx_undo_get_next_rec_from_k_ridge(
 		row_prebuilt_t* prebuilt, 
-		roll_ptr_t next_roll_ptr,
-		const rec_t* rec,
-		const ulint* offsets);
+		roll_ptr_t next_roll_ptr);
 
 
 #endif /* SCSLAB_CVC */

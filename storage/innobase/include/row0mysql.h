@@ -889,52 +889,7 @@ struct row_prebuilt_t {
 
 #ifdef SCSLAB_CVC
  public:
-
-  k_ridge_info_t* k_ridge_info;
-
-  void init_k_ridge_info() {
-    k_ridge_info->is_valid = false;
-    k_ridge_info->rec = nullptr;
-    k_ridge_info->next_roll_ptr = 0;
-    k_ridge_info->next_trx_id = 0;
-    
-    if (!k_ridge_info->init_offset) {
-      k_ridge_info->init_offset = true;
-      k_ridge_info->offsets = k_ridge_info->offsets_;
-      rec_offs_init(k_ridge_info->offsets_);
-    }
-    
-    if (!k_ridge_info->offset_heap) {
-      k_ridge_info->offset_heap = mem_heap_create(1024);
-    } else {
-      mem_heap_empty(k_ridge_info->offset_heap);
-    }
-    
-    if (!k_ridge_info->heap) {
-      k_ridge_info->heap = mem_heap_create(200);
-    } else {
-      mem_heap_empty(k_ridge_info->heap);
-    }
-    
-    if (!k_ridge_info->undo_heap) {
-      k_ridge_info->undo_heap = mem_heap_create(1024);
-    } else {
-      mem_heap_empty(k_ridge_info->undo_heap);
-    }
-  }
-
-	void free_k_ridge_info() {
-    if (k_ridge_info->heap)
-      mem_heap_free(k_ridge_info->heap);
-    if (k_ridge_info->offset_heap)
-      mem_heap_free(k_ridge_info->offset_heap);
-    if (k_ridge_info->undo_heap)
-      mem_heap_free(k_ridge_info->undo_heap);
-  }
-  
-  bool k_ridge_is_valid() const {
-    return k_ridge_info->is_valid;
-  }
+	roll_ptr_t k_ridge_roll_ptr;
 #endif /* SCSLAB_CVC */
 
  private:

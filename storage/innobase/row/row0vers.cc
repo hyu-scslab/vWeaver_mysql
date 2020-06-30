@@ -1453,8 +1453,8 @@ dberr_t row_vers_build_for_consistent_read_cvc(
   bool is_user_record = rec_is_user_record(rec, index);
 
   ut_ad(index->is_clustered());
-  ut_ad(mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_X_FIX) ||
-        mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_S_FIX));
+  //ut_ad(mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_X_FIX) ||
+  //      mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_S_FIX));
   ut_ad(!rw_lock_own(&(purge_sys->latch), RW_LOCK_S));
 
   ut_ad(rec_offs_validate(rec, index, *offsets));
@@ -1481,6 +1481,7 @@ dberr_t row_vers_build_for_consistent_read_cvc(
       *vrow = NULL;
     }
 
+		prebuilt->k_ridge_roll_ptr = 0;
     /* Follow version ridge. A version that should be seen is contained
        in prev_version */
     bool purge_sees =

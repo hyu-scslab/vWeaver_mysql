@@ -164,7 +164,7 @@ static roll_ptr_t trx_undo_get_k_ridge_in_upd(
   rec_offs_init(offsets_);
 
   if (btr_pcur_get_next_user_rec(pcur, mtr, ret_rec, ret_block, index)) {
-      ut_a(ret_rec != nullptr);
+    ut_a(ret_rec != nullptr);
   }
 
   if (!ret_rec) {
@@ -175,7 +175,8 @@ static roll_ptr_t trx_undo_get_k_ridge_in_upd(
 
   /**
     1. Make a transaction's read_view if needed.
-    XXX: You should carefully think about trade-off between # of read-views and global mutex
+    XXX: You should carefully think about trade-off
+              between # of read-views and global mutex
     **/
   view = trx_assign_read_view(trx);
   ut_a(view != nullptr); 
@@ -187,24 +188,25 @@ static roll_ptr_t trx_undo_get_k_ridge_in_upd(
 
   /**
     3. Do visibility check.
-    If you can see the record in data page, you simply use its roll pointer.
+    If you can see the record in data page, Use its roll pointer.
     Else you have to get undo log record and build previous version.
 
     XXX: Now we don't care about purge_sys->view, however actually
          keeping the transaction id that made undo log is necessary.
     **/
-  offsets = rec_get_offsets(ret_rec, index, offsets, ULINT_UNDEFINED, &offset_heap);
+  offsets = rec_get_offsets(ret_rec, index,
+                            offsets, ULINT_UNDEFINED, &offset_heap);
   ret_roll_ptr = row_get_rec_roll_ptr(ret_rec, index, offsets);
 
   /* If the rollback pointer is about insert, return immediately */
   if (trx_undo_roll_ptr_is_insert(ret_roll_ptr)) {
-      ret_roll_ptr = 0;
-      goto func_exit;
+    ret_roll_ptr = 0;
+    goto func_exit;
   }
 
   /* If the record is visible (committed), return its roll pointer */
   if (view->changes_visible_ignore_creator(trx_id, index->table->name)) {
-      goto func_exit;
+    goto func_exit;
   }
 
   /**
@@ -216,27 +218,28 @@ static roll_ptr_t trx_undo_get_k_ridge_in_upd(
   version = ret_rec;
 
   for (;;) {
-     mem_heap_t* prev_heap = heap;
+    mem_heap_t* prev_heap = heap;
+    heap = mem_heap_create(1024);
+    (void)trx_undo_prev_version_build(
+        ret_rec, mtr, version, index, offsets, 
+        heap, &prev_version, NULL, NULL, 0, nullptr);
     
-     heap = mem_heap_create(1024);
+    ut_a(prev_version != nullptr);
     
-     (void)trx_undo_prev_version_build(ret_rec, mtr, version, index, offsets, heap,
-           &prev_version, NULL, NULL, 0, nullptr);
-    
-     ut_a(prev_version != nullptr);
-    
-     if (prev_heap != NULL) {
-     	 mem_heap_free(prev_heap);
-     }
+    if (prev_heap != NULL) {
+      mem_heap_free(prev_heap);
+    }
 
-     offsets = rec_get_offsets(prev_version, index, offsets, ULINT_UNDEFINED, &offset_heap);
+    offsets = rec_get_offsets(prev_version, index,
+                              offsets, ULINT_UNDEFINED, &offset_heap);
     
-     if (row_get_rec_trx_id(prev_version, index, offsets) == trx_id) {
-     	 version = prev_version;
-     	 continue;
-     } else {
-     	break;
-     }
+  
+    if (row_get_rec_trx_id(prev_version, index, offsets) == trx_id) {
+      version = prev_version;
+      continue;
+    } else {
+      break;
+    }
   }
 	
   ret_roll_ptr = row_get_rec_roll_ptr(prev_version, index, offsets);
@@ -247,15 +250,15 @@ static roll_ptr_t trx_undo_get_k_ridge_in_upd(
 
 func_exit:
   if (heap) {
-      mem_heap_free(heap);
+    mem_heap_free(heap);
   }
 
   if (offset_heap) {
-      mem_heap_free(offset_heap);
+    mem_heap_free(offset_heap);
   }
 
   if (ret_block != nullptr) {
-      btr_leaf_page_release(ret_block, BTR_SEARCH_LEAF, mtr);
+    btr_leaf_page_release(ret_block, BTR_SEARCH_LEAF, mtr);
   }
 
   return ret_roll_ptr;
@@ -315,8 +318,7 @@ static void trx_undo_set_next_roll_ptr(
   const byte* ptr;
   
   ut_a(next_roll_ptr != 0 && !trx_undo_roll_ptr_is_insert(next_roll_ptr));
-  trx_undo_decode_roll_ptr(roll_ptr, &is_insert, &rseg_id, 
-                           &page_no, &offset);
+  trx_undo_decode_roll_ptr(roll_ptr, &is_insert, &rseg_id, &page_no, &offset);
   space_id = trx_rseg_id_to_space_id(rseg_id, false);
   
   const page_size_t& page_size = fil_space_get_page_size(space_id, &found);
@@ -339,7 +341,7 @@ static void trx_undo_set_next_roll_ptr(
   mtr_commit(mtr);
 }
 
-/** Get k-ridge rollback pointer from a version that pointed by roll_ptr(input).
+/** Get k-ridge rollback pointer from a version that pointed by roll_ptr(in).
  @return k-ridge rollback pointer. */
 static roll_ptr_t trx_undo_get_k_ridge_in_search(roll_ptr_t roll_ptr) {
   ibool is_insert;
@@ -352,8 +354,7 @@ static roll_ptr_t trx_undo_get_k_ridge_in_search(roll_ptr_t roll_ptr) {
 	roll_ptr_t ret_roll_ptr;
 	mtr_t mtr;
 
-  trx_undo_decode_roll_ptr(roll_ptr, &is_insert, &rseg_id, 
-                           &page_no, &offset);
+  trx_undo_decode_roll_ptr(roll_ptr, &is_insert, &rseg_id, &page_no, &offset);
   space_id = trx_rseg_id_to_space_id(rseg_id, false);
 
   const page_size_t& page_size = fil_space_get_page_size(space_id, &found);
@@ -361,7 +362,8 @@ static roll_ptr_t trx_undo_get_k_ridge_in_search(roll_ptr_t roll_ptr) {
 
   mtr_start(&mtr);
 
-  undo_page = trx_undo_page_get_s_latched(page_id_t(space_id, page_no), page_size, &mtr);
+  undo_page = trx_undo_page_get_s_latched(
+      page_id_t(space_id, page_no), page_size, &mtr);
 
   /* Set ptr to undo log record */
   ptr = undo_page + offset;
@@ -383,113 +385,11 @@ static roll_ptr_t trx_undo_get_k_ridge_in_search(roll_ptr_t roll_ptr) {
   return ret_roll_ptr;
 }
 
-/** Build k-ridge record. */
-void trx_undo_build_k_ridge_rec(
-    rec_t** old_vers,             /*!< out: k-ridge record */
-    ulint** offsets,              /*!< out: Array returned by rec_get_offsets() */
-    roll_ptr_t k_ridge_roll_ptr,  /*!< in: K-ridge rollback pointer */ 
-    mem_heap_t* heap,             /*!< in: memory heap from which old_vers is allocated */
-    mem_heap_t* undo_heap,        /*!< in: memory heap from which undo log record is allocated */
-    mem_heap_t* offset_heap,      /*!< in: memory heap from which the offsets are allocated */
-    trx_id_t& next_trx_id,        /*!< out: next transaction id */
-    roll_ptr_t& next_roll_ptr,    /*!< out: next rollback pointer */
-    const rec_t* rec,             /*!< in: record in clustered index */
-    const ulint* in_offsets,      /*!< in: Array returned by rec_get_offsets() */
-    const dict_index_t* index)    /*!< in: clustered index */
-
-{
-  ibool is_insert;
-  ulint rseg_id, offset;
-  page_no_t page_no;
-  page_t* undo_page;
-  space_id_t space_id;
-  bool found;
-  mtr_t mtr;
-  
-  trx_undo_rec_t* undo_rec;
-  ulint type;
-  undo_no_t undo_no;
-  table_id_t table_id;
-  trx_id_t trx_id;
-  roll_ptr_t roll_ptr;
-  
-  cvc_info_cache cvc_info;
-  
-  upd_t* update = nullptr;
-  byte* ptr;
-  ulint info_bits;
-  ulint cmpl_info;
-  bool dummy_extern;
-  byte* buf;
-  
-  ut_a(rec_is_user_record(rec, index));
-  ut_a(index->is_clustered());
-	ut_a(k_ridge_roll_ptr != 0 && !trx_undo_roll_ptr_is_insert(k_ridge_roll_ptr));
-  
-  trx_undo_decode_roll_ptr(k_ridge_roll_ptr, &is_insert, &rseg_id, 
-                           &page_no, &offset);
-  space_id = trx_rseg_id_to_space_id(rseg_id, false);
-  
-  const page_size_t& page_size = fil_space_get_page_size(space_id, &found);
-  ut_a(found);
-  
-  mtr_start(&mtr);
-  
-  undo_page = trx_undo_page_get_s_latched(page_id_t(space_id, page_no), page_size, &mtr);
-  
-  undo_rec = trx_undo_rec_copy(undo_page + offset, undo_heap);
-  
-  mtr_commit(&mtr);
-  
-  /**
-    Building record and offsets follows origin-routine.
-    See trx_undo_prev_version_build().
-    **/
-  type_cmpl_t type_cmpl;
-  ptr = trx_undo_rec_get_pars(undo_rec, &type, &cmpl_info, &dummy_extern,
-  		&undo_no, &table_id, type_cmpl);
-  
-  ptr = trx_undo_update_rec_get_sys_cols(ptr, &trx_id, &roll_ptr, &info_bits, &cvc_info);
-  
-  ptr = trx_undo_rec_skip_row_ref(ptr, index);
-  
-  ptr = trx_undo_update_rec_get_update(ptr, index, type, trx_id, roll_ptr,
-    info_bits, NULL, undo_heap, &update, nullptr, type_cmpl);
-  
-  ut_a(ptr);
-  
-  if(row_upd_changes_field_size_or_external(index, in_offsets, update)) {
-	  /* Do not care about this case */
-    ut_a(false);
-  } else {	
-    buf = static_cast<byte *>(mem_heap_alloc(heap, rec_offs_size(in_offsets)));
-  
-    *old_vers = rec_copy(buf, rec, in_offsets);
-  
-    *offsets = rec_get_offsets(*old_vers, index, *offsets, ULINT_UNDEFINED, &offset_heap);
-  
-    rec_offs_make_valid(*old_vers, index, *offsets);
-
-    row_upd_rec_in_place(*old_vers, index, *offsets, update, NULL);
-  
-    ut_a(*old_vers);
-  
-    if (update != nullptr) {
-  	  update->reset();
-    }
-
-    next_roll_ptr = cvc_info.next_roll_ptr;
-    next_trx_id = cvc_info.next_trx_id;
-  }
-}
-
 /** Get a version of the next key record, and build k-ridge rollback pointer.
  Save a version in prebuilt struct */
 void trx_undo_get_next_rec_from_k_ridge(
     row_prebuilt_t* prebuilt,    /*!< in: prebuilt struct */
-    roll_ptr_t next_roll_ptr,    /*!< in: next rollback pointer */
-    const rec_t* rec,            /*!< in: record in clustered index or an old version */
-    const ulint* offsets)        /*!< in: Array returned by rec_get_offsets() */
+    roll_ptr_t next_roll_ptr)    /*!< in: next rollback pointer */
 {
   if (!prebuilt)
 	  return;
@@ -497,10 +397,10 @@ void trx_undo_get_next_rec_from_k_ridge(
   roll_ptr_t k_ridge_roll_ptr;
 
   /* Initialize k-ridge variables in prebuilt. */
-  prebuilt->init_k_ridge_info();
+  ut_ad(prebuilt->k_ridge_roll_ptr == 0);
 
-	/* If next rollback pointer is not valid, return immediately. */
-	if (next_roll_ptr == 0 || trx_undo_roll_ptr_is_insert(next_roll_ptr)) {
+  /* If next rollback pointer is not valid, return immediately. */
+  if (next_roll_ptr == 0 || trx_undo_roll_ptr_is_insert(next_roll_ptr)) {
     return;
   }
 
@@ -510,20 +410,11 @@ void trx_undo_get_next_rec_from_k_ridge(
   if (k_ridge_roll_ptr == 0) {
     return;
   }
-  
-	ut_a(!trx_undo_roll_ptr_is_insert(k_ridge_roll_ptr));
-  ut_a(prebuilt->k_ridge_info->is_valid == false);
-  
-  /* Build full record and offsets in prebuilt struct. */
-  (void)trx_undo_build_k_ridge_rec(&prebuilt->k_ridge_info->rec, &prebuilt->k_ridge_info->offsets, k_ridge_roll_ptr, 
-	  prebuilt->k_ridge_info->heap, prebuilt->k_ridge_info->undo_heap, prebuilt->k_ridge_info->offset_heap, 
-    prebuilt->k_ridge_info->next_trx_id, prebuilt->k_ridge_info->next_roll_ptr, rec, offsets, prebuilt->index);
-  
-  prebuilt->k_ridge_info->is_valid = true;
-  
+	 
+	prebuilt->k_ridge_roll_ptr = k_ridge_roll_ptr;
+
   return;
 }
-
 #endif /* SCSLAB_CVC */
 
 
@@ -3470,8 +3361,8 @@ bool trx_undo_prev_version_build_in_vridge(
   type_cmpl_t type_cmpl;
 
   ut_ad(!rw_lock_own(&purge_sys->latch, RW_LOCK_S));
-  ut_ad(mtr_memo_contains_page(index_mtr, index_rec, MTR_MEMO_PAGE_S_FIX) ||
-        mtr_memo_contains_page(index_mtr, index_rec, MTR_MEMO_PAGE_X_FIX));
+  //ut_ad(mtr_memo_contains_page(index_mtr, index_rec, MTR_MEMO_PAGE_S_FIX) ||
+  //      mtr_memo_contains_page(index_mtr, index_rec, MTR_MEMO_PAGE_X_FIX));
   ut_ad(rec_offs_validate(rec, index, offsets));
   ut_a(index->is_clustered());
 
@@ -3501,7 +3392,8 @@ bool trx_undo_prev_version_build_in_vridge(
       return true;
     }
 
-    trx_undo_get_next_rec_from_k_ridge(prebuilt, found_info.next_roll_ptr, rec, offsets);
+		// JAESEON
+    trx_undo_get_next_rec_from_k_ridge(prebuilt, found_info.next_roll_ptr);
 
     ptr = trx_undo_rec_skip_row_ref(ptr, index);
 
@@ -3696,6 +3588,164 @@ bool trx_undo_prev_version_build_in_vridge(
   return true;
 }
 
+bool trx_undo_specific_version_build(
+    const rec_t *index_rec ATTRIB_USED_ONLY_IN_DEBUG,
+    mtr_t *index_mtr ATTRIB_USED_ONLY_IN_DEBUG, const rec_t *rec,
+    const dict_index_t *const index, ulint *offsets, mem_heap_t *heap,
+    rec_t **old_vers, mem_heap_t *v_heap, const dtuple_t **vrow, 
+    ulint v_status, lob::undo_vers_t *lob_undo, roll_ptr_t k_ridge_roll_ptr, 
+    trx_id_t& next_trx_id, roll_ptr_t& next_roll_ptr) 
+{
+  DBUG_TRACE;
+
+  trx_undo_rec_t *undo_rec = NULL;
+  ulint type;
+  undo_no_t undo_no;
+  table_id_t table_id;
+  trx_id_t trx_id;
+  roll_ptr_t roll_ptr;
+
+  upd_t *update = nullptr;
+  byte *ptr;
+  ulint info_bits;
+  ulint cmpl_info;
+  bool dummy_extern;
+  byte *buf;
+
+  ut_ad(!rw_lock_own(&purge_sys->latch, RW_LOCK_S));
+  ut_ad(mtr_memo_contains_page(index_mtr, index_rec, MTR_MEMO_PAGE_S_FIX) ||
+        mtr_memo_contains_page(index_mtr, index_rec, MTR_MEMO_PAGE_X_FIX));
+  ut_ad(rec_offs_validate(rec, index, offsets));
+  ut_a(index->is_clustered());
+
+  roll_ptr = k_ridge_roll_ptr;
+	ut_a(roll_ptr != 0);
+  *old_vers = NULL;
+
+  if (trx_undo_roll_ptr_is_insert(roll_ptr)) {
+    /* The record rec is the first inserted version */
+		ut_a(false);
+  }
+
+  /* REDO rollback segments are used only for non-temporary objects.
+  For temporary objects NON-REDO rollback segments are used. */
+  bool is_temp = index->table->is_temporary();
+
+  ut_ad(!index->table->skip_alter_undo);
+
+	undo_rec = trx_undo_get_undo_rec_low(roll_ptr, heap, is_temp);
+
+  type_cmpl_t type_cmpl;
+  ptr = trx_undo_rec_get_pars(undo_rec, &type, &cmpl_info, &dummy_extern,
+                              &undo_no, &table_id, type_cmpl);
+
+  if (table_id != index->table->id) {
+    /* The table should have been rebuilt, but purge has
+    not yet removed the undo log records for the
+    now-dropped old table (table_id). */
+    return true;
+  }
+  
+  cvc_info_cache cvc_info;
+	ptr = trx_undo_update_rec_get_sys_cols(
+      ptr, &trx_id, &roll_ptr, &info_bits, &cvc_info);
+
+  next_trx_id = cvc_info.next_trx_id;
+  next_roll_ptr = cvc_info.next_roll_ptr;
+
+  /* (a) If a clustered index record version is such that the
+  trx id stamp in it is bigger than purge_sys->view, then the
+  BLOBs in that version are known to exist (the purge has not
+  progressed that far);
+
+  (b) if the version is the first version such that trx id in it
+  is less than purge_sys->view, and it is not delete-marked,
+  then the BLOBs in that version are known to exist (the purge
+  cannot have purged the BLOBs referenced by that version
+  yet).
+
+  This function does not fetch any BLOBs.  The callers might, by
+  possibly invoking row_ext_create() via row_build().  However,
+  they should have all needed information in the *old_vers
+  returned by this function.  This is because *old_vers is based
+  on the transaction undo log records.  The function
+  trx_undo_page_fetch_ext() will write BLOB prefixes to the
+  transaction undo log that are at least as long as the longest
+  possible column prefix in a secondary index.  Thus, secondary
+  index entries for *old_vers can be constructed without
+  dereferencing any BLOB pointers. */
+
+  ptr = trx_undo_rec_skip_row_ref(ptr, index);
+
+  ptr = trx_undo_update_rec_get_update(ptr, index, type, trx_id, roll_ptr,
+                                       info_bits, NULL, heap, &update, lob_undo,
+                                       type_cmpl);
+  ut_a(ptr);
+	
+  if (row_upd_changes_field_size_or_external(index, offsets, update)) {
+	  ut_a(false);
+  } else {
+    buf = static_cast<byte *>(mem_heap_alloc(heap, rec_offs_size(offsets)));
+
+    *old_vers = rec_copy(buf, rec, offsets);
+    rec_offs_make_valid(*old_vers, index, offsets);
+    row_upd_rec_in_place(*old_vers, index, offsets, update, NULL);
+    ut_ad(*old_vers);
+    if (update != nullptr) {
+      update->reset();
+    }
+    return true;
+  }
+  ut_a(false);
+  /* Set the old value (which is the after image of an update) in the
+  update vector to dtuple vrow */
+  if (v_status & TRX_UNDO_GET_OLD_V_VALUE) {
+    row_upd_replace_vcol((dtuple_t *)*vrow, index->table, update, false, NULL,
+                         NULL);
+  }
+
+#if defined UNIV_DEBUG || defined UNIV_BLOB_LIGHT_DEBUG
+  ut_a(!rec_offs_any_null_extern(
+      *old_vers,
+      rec_get_offsets(*old_vers, index, NULL, ULINT_UNDEFINED, &heap)));
+#endif  // defined UNIV_DEBUG || defined UNIV_BLOB_LIGHT_DEBUG
+
+  /* If vrow is not NULL it means that the caller is interested in the values of
+  the virtual columns for this version.
+  If the UPD_NODE_NO_ORD_CHANGE flag is set on cmpl_info, it means that the
+  change which created this entry in undo log did not affect any column of any
+  secondary index (in particular: virtual), and thus the values of virtual
+  columns were not recorded in undo. In such case the caller may assume that the
+  values of (virtual) columns present in secondary index are exactly the same as
+  they are in the next (more recent) version.
+  If on the other hand the UPD_NODE_NO_ORD_CHANGE flag is not set, then we will
+  make sure that *vrow points to a properly allocated memory and contains the
+  values of virtual columns for this version recovered from undo log.
+  This implies that if the caller has provided a non-NULL vrow, and the *vrow is
+  still NULL after the call, (and old_vers is not NULL) it must be because the
+  UPD_NODE_NO_ORD_CHANGE flag was set for this version.
+  This last statement is an important assumption made by the
+  row_vers_impl_x_locked_low() function. */
+  if (vrow && !(cmpl_info & UPD_NODE_NO_ORD_CHANGE)) {
+    if (!(*vrow)) {
+      *vrow = dtuple_create_with_vcol(v_heap ? v_heap : heap,
+                                      index->table->get_n_cols(),
+                                      dict_table_get_n_v_cols(index->table));
+      dtuple_init_v_fld(*vrow);
+    }
+
+    ut_ad(index->table->n_v_cols);
+    trx_undo_read_v_cols(index->table, ptr, *vrow,
+                         v_status & TRX_UNDO_PREV_IN_PURGE, false, nullptr,
+                         (v_heap != nullptr ? v_heap : heap));
+  }
+
+  if (update != nullptr) {
+    update->reset();
+  }
+
+  return true;
+}
 #endif /* SCSLAB_CVC */
 
 
