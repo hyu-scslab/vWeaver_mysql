@@ -137,10 +137,6 @@ void trx_undo_get_prev_undo_info(roll_ptr_t roll_ptr,
   }
 }
 
-
-
-static byte *trx_undo_rec_skip_row_ref(byte* ptr, const dict_index_t* index);
-
 /** Find the rollback pointer that indicates next key's last committed version.
     If rollback pointer is about insert, make ret_roll_ptr 0.
     @return k-ridge rollback pointer. */
@@ -1357,7 +1353,6 @@ static const byte *trx_undo_read_blob_update(const byte *undo_ptr,
 }
 
 
-#ifndef SCSLAB_CVC 
 /** Write the partial update information about LOBs to the undo log record.
 @param[in]	undo_page	the undo page
 @param[in]	index		the clustered index where LOBs are modified.
@@ -1524,7 +1519,6 @@ static byte *trx_undo_report_blob_update(page_t *undo_page, dict_index_t *index,
 
   return undo_ptr;
 }
-#endif
 
 #ifdef SCSLAB_CVC
 /** When updating records, get a next equal or higher level undo log metadata.
@@ -1926,7 +1920,7 @@ static ulint trx_undo_page_report_modify(
         }
       }
     } else {
-#else /* SCSLAB_CVC */
+#endif /* SCSLAB_CVC */
     if (trx_undo_left(undo_page, ptr) < 5) {
       return 0;
     }
@@ -2092,10 +2086,9 @@ static ulint trx_undo_page_report_modify(
         }
       }
     }
-#endif /* SCSLAB_CVC */
 #ifdef SCSLAB_CVC
   }
-#endif
+#endif /* SCSLAB_CVC */
   }
 
   /* Reset the first_v_col, so to put the virtual column undo
@@ -2821,7 +2814,7 @@ void trx_undo_get_cvc_info_from_prev_undo(rec_t * rec,
   }
 
 	prev_undo_info.next_roll_ptr = 0;
-	prev_undo_info.next_trx_id = rec_get_trx_id(rec, index);
+	prev_undo_info.next_trx_id = trx->id;
   
 	ut_ad(pcur->get_rec() == rec);
   prev_undo_info.k_ridge_roll_ptr = trx_undo_get_k_ridge_in_upd(pcur, mtr, trx, index);

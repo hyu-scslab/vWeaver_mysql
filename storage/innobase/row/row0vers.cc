@@ -1347,7 +1347,7 @@ dberr_t row_vers_build_for_consistent_read(
     return err;
 
   } else {
-#else /* SCSLAB_CVC */
+#endif /* SCSLAB_CVC */
   for (;;) {
     mem_heap_t *prev_heap = heap;
 
@@ -1405,10 +1405,9 @@ dberr_t row_vers_build_for_consistent_read(
 
     version = prev_version;
   }
-#endif /*SCSLAB_CVC */
 #ifdef SCSLAB_CVC
   }
-#endif
+#endif /* SCSLAB_CVC */
   
   mem_heap_free(heap);
   return err;
