@@ -1439,9 +1439,10 @@ dberr_t row_vers_build_for_consistent_read(
  @return DB_SUCCESS or DB_MISSING_HISTORY */
 
 dberr_t row_vers_build_for_consistent_read_cvc(
-    const rec_t *rec, mtr_t *mtr, dict_index_t *index, ulint **offsets,
-    ReadView *view, mem_heap_t **offset_heap, mem_heap_t *in_heap,
-    rec_t **old_vers, const dtuple_t **vrow, lob::undo_vers_t *lob_undo, row_prebuilt_t* prebuilt) {
+    const rec_t *rec, mtr_t *mtr, dict_index_t *index, 
+    ulint **offsets, ReadView *view, mem_heap_t **offset_heap, 
+    mem_heap_t *in_heap, rec_t **old_vers, const dtuple_t **vrow,
+    lob::undo_vers_t *lob_undo, row_prebuilt_t* prebuilt) {
   DBUG_TRACE;
   const rec_t *version;
   rec_t *prev_version;
@@ -1473,7 +1474,6 @@ dberr_t row_vers_build_for_consistent_read_cvc(
 
   /* If record is user record, follow version ridge. */
   if(is_user_record) {
-    mem_heap_t * prev_heap = NULL;
     heap = mem_heap_create(1024);
 
     if (vrow) {
@@ -1484,15 +1484,12 @@ dberr_t row_vers_build_for_consistent_read_cvc(
     /* Follow version ridge. A version that should be seen is contained
        in prev_version */
     bool purge_sees =
-        trx_undo_prev_version_build_in_vridge(rec, mtr, version, index, 
-                                              *offsets, &heap, &prev_version, 
-                                              NULL, vrow, 0, lob_undo, view, prebuilt);
+        trx_undo_prev_version_build_in_vridge(rec, mtr, version, 
+                                              index, *offsets, &heap, 
+                                              &prev_version, NULL, vrow,
+                                              0, lob_undo, view, prebuilt);
 
     err = (purge_sees) ? DB_SUCCESS : DB_MISSING_HISTORY;
-
-    if (prev_heap != NULL) {
-      mem_heap_free(prev_heap);
-    }
 
     if (prev_version == NULL) {
       /* It was a freshly inserted version */

@@ -189,24 +189,6 @@ typedef struct __cvc_info_cache__
 
 } cvc_info_cache;
 
-#define MY_REC_OFFS_NORMAL_SIZE 100 /* Same with REC_OFFS_NORAMAL SIZE in rem/rec.h */ 
-
-struct k_ridge_info_t {
-  bool is_valid;
-  bool init_offset;
-  
-  rec_t* rec;
-  roll_ptr_t next_roll_ptr;
-  trx_id_t next_trx_id;
-  
-  ulint offsets_[MY_REC_OFFS_NORMAL_SIZE];
-  ulint* offsets;
-  
-  mem_heap_t* offset_heap;
-  mem_heap_t* heap;
-  mem_heap_t* undo_heap;
-};
-
 #endif /* SCSLAB_CVC */
 
 /** Maximum transaction identifier */
