@@ -5378,6 +5378,9 @@ rec_loop:
               ut_a(false);
               rec = old_vers;
               prev_rec = rec;
+            } else {
+              ut_ad(false);
+              ut_a(false);
             }
 #endif /* SCSLAB_CVC_VALIDATION */
             goto next_rec;

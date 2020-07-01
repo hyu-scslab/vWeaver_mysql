@@ -3385,7 +3385,7 @@ bool trx_undo_prev_version_build_in_vridge(
   ut_ad(!index->table->skip_alter_undo);
 
   if (is_user_record) {
-    // Get undo record using vridge
+    /* Get undo record using vridge */
     ptr = trx_get_undo_rec_following_ridge(index, heap, rec_roll_ptr, 
                                            rec_trx_id, view,  &trx_id, 
                                            &roll_ptr, &type, &info_bits, found_info);
@@ -3393,7 +3393,7 @@ bool trx_undo_prev_version_build_in_vridge(
       return true;
     }
 
-		// JAESEON
+    /* Get k-ridge rollback pointer */
     trx_undo_get_next_rec_from_k_ridge(prebuilt, found_info.next_roll_ptr);
 
     ptr = trx_undo_rec_skip_row_ref(ptr, index);
@@ -3589,6 +3589,12 @@ bool trx_undo_prev_version_build_in_vridge(
   return true;
 }
 
+/** Build a specific version that pointed by k-ridge rollback pointer.
+  Refer to trx_undo_prev_version_build().
+  Have same parameters except last three.
+@param[in]  k_ridge_roll_ptr    rollback pointer to version
+@param[out] next_trx_id         undo record's next transaction id
+@param[out] next_roll_ptr       undo record's next rollback pointer */
 bool trx_undo_specific_version_build(
     const rec_t *index_rec ATTRIB_USED_ONLY_IN_DEBUG,
     mtr_t *index_mtr ATTRIB_USED_ONLY_IN_DEBUG, const rec_t *rec,
