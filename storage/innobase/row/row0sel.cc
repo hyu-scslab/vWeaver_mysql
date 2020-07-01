@@ -5390,7 +5390,7 @@ rec_loop:
                 next_trx_id, index->table->name)) {
             /* If transaction can see next_trx_id, 
             Build a version with next_roll_ptr */
-					  if (next_roll_ptr != 0) {
+            if (next_roll_ptr != 0) {
               rec_t* k_ridge_next_version;
 
               (void)trx_undo_specific_version_build(
@@ -5415,13 +5415,12 @@ rec_loop:
               
               rec = old_vers;
               prev_rec = rec;
-              
-						}
+            }
             /* Build k-ridge rollback pointer if next_roll_ptr != 0 */
             prebuilt->k_ridge_roll_ptr = 0;
             trx_undo_get_next_rec_from_k_ridge(prebuilt, next_roll_ptr);
             
-					} else if (trx->read_view->changes_visible(
+          } else if (trx->read_view->changes_visible(
                rec_get_trx_id(k_ridge_version, index), index->table->name)) {
             /* If transaction can see k-ridge record's trx_id, 
             Copy k-ridge record to rec */
@@ -5445,11 +5444,10 @@ rec_loop:
             
             prebuilt->k_ridge_roll_ptr = 0;
             trx_undo_get_next_rec_from_k_ridge(prebuilt, next_roll_ptr);
-					
           } else {
             /* The only case uses cvc_old_vers_heap */
             cvc_old_vers_heap = mem_heap_create(200);
-            	
+            
             offsets = rec_get_offsets(k_ridge_version, index,
                                       offsets, ULINT_UNDEFINED, &heap);
             
@@ -5464,7 +5462,7 @@ rec_loop:
             prebuilt->k_ridge_roll_ptr = 0;
           }
           mem_heap_free(k_ridge_heap);
-			  }
+        }
       }
 #endif /* SCSLAB_CVC */
       if (srv_force_recovery < 5 &&
@@ -5501,12 +5499,14 @@ rec_loop:
         /* Found version in rec with k-ridge */
         mem_heap_t* debug_heap = mem_heap_create(1024);
         ulint len1, len2;
+        roll_ptr_t roll_ptr1, roll_ptr2;
         
         byte* buf1 = static_cast<byte *>(
             mem_heap_alloc(debug_heap, rec_offs_size(offsets)));
   
         len1 = rec_offs_size(offsets);
-  
+        roll_ptr1 = prebuilt->k_ridge_roll_ptr;
+
         rec_copy(buf1, rec, offsets);
   
         /* Find a version only with v-ridge */
@@ -5537,11 +5537,16 @@ rec_loop:
           prev_rec = rec;
         }
   
+        roll_ptr2 = prebuilt->k_ridge_roll_ptr;
+        
         rec_copy(buf2, rec, offsets);
   
         ut_a(len1 == len2);
         ut_ad(len1 == len2);
   
+        ut_a(roll_ptr1 == roll_ptr2);
+        ut_ad(roll_ptr1 == roll_ptr2);
+
         ut_a(memcmp(buf1, buf2, len1) == 0);
         ut_ad(memcmp(buf1, buf2, len1) == 0);
         

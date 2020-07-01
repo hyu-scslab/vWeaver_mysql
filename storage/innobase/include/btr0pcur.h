@@ -463,8 +463,10 @@ struct btr_pcur_t {
   void move_before_first_on_page();
 
 #ifdef SCSLAB_CVC
-	/** Get next user record with holding latch if needed. It doesn't move page cursor. */
-	dberr_t get_next_user_rec(mtr_t* mtr, rec_t*&, buf_block_t*&, dict_index_t* index);
+  /** Get next user record with holding latch if needed. 
+  It doesn't move page cursor. */
+  dberr_t get_next_user_rec(
+      mtr_t* mtr, rec_t*&, buf_block_t*&, dict_index_t* index);
 #endif /* SCSLAB_CVC */
 
 #endif /* !UNIV_HOTBACKUP */
@@ -1026,7 +1028,7 @@ inline void btr_pcur_t::move_before_first_on_page() {
 
 #ifdef SCSLAB_CVC
 /** Find the user record next to the record on page cursor.
-    This function should not move cursor */
+This function should not move cursor */
 inline dberr_t btr_pcur_t::get_next_user_rec(
     mtr_t *mtr,               /*!< in/out: mini-transaction */
     rec_t*& ret_rec,          /*!< out: next user record */
