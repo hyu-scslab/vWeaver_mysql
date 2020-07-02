@@ -1746,17 +1746,33 @@ trx_id_t rec_get_trx_id(const rec_t *rec,          /*!< in: record */
 
 
 #ifdef SCSLAB_CVC
-bool cmp_rec_rec_pk(const rec_t* rec1, const ulint* offsets1, const rec_t* rec2, const ulint* offsets2,
-    const dict_index_t* index) {
+bool cmp_rec_rec_pk(
+    const rec_t* rec1, const ulint* offsets1, 
+    const rec_t* rec2, const ulint* offsets2, const dict_index_t* index) {
   ulint len1, len2;
+  const byte* data1;
+  const byte* data2;
+  
+  ulint key_no = dict_index_get_n_unique(index);
+  int ret;
 
-  const byte* data1 = rec_get_nth_field_instant(rec1, offsets1, dict_col_get_no(index->fields->col), index, &len1);
-  const byte* data2 = rec_get_nth_field_instant(rec2, offsets2, dict_col_get_no(index->fields->col), index, &len2);
+  ut_ad(rec_offs_size(offsets1) == rec_offs_size(offsets2));
 
-  ut_a(len1 == len2);
+  for (ulint i = 0; i < key_no; ++i) {
+    data1 = rec_get_nth_field_instant(rec1, offsets1, i, index, &len1);
+    data2 = rec_get_nth_field_instant(rec2, offsets2, i, index, &len2);
+   
+    ut_a(len1 == len2);
+    ut_ad(len1 == len2);
 
-  int ret = memcmp(data1, data2, len1);
-  return (ret == 0) ? true : false;
+    ret = memcmp(data1, data2, len1);
+    ut_a(ret <= 0);
+    ut_ad(ret <= 0);
+    if (ret != 0) {
+      return false;
+    }
+  }
+  return true;
 }
 
 #endif /* SCSLAB_CVC */

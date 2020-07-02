@@ -477,13 +477,21 @@ byte* trx_get_undo_rec_following_ridge(
   ulint * pinfo_bits,					/*< out : undo log information bits */
 	cvc_info_cache& found_info);        
 
+/** Build a specific version that pointed by k-ridge rollback pointer.
+  Refer to trx_undo_prev_version_build().
+  Have same parameters except last three.
+@param[in]  k_ridge_roll_ptr    rollback pointer to version
+@param[out] next_trx_id         undo record's next transaction id
+@param[out] next_roll_ptr       undo record's next rollback pointer */
 bool trx_undo_specific_version_build(
     const rec_t *index_rec, mtr_t *index_mtr, const rec_t *rec,
     const dict_index_t *const index, ulint *offsets, mem_heap_t *heap,
     rec_t **old_vers, mem_heap_t *v_heap, const dtuple_t **vrow, 
     ulint v_status, lob::undo_vers_t *lob_undo, roll_ptr_t k_ridge_roll_ptr,
-    trx_id_t& next_trx_id, roll_ptr_t& next_roll_ptr);
+    trx_id_t* next_trx_id, roll_ptr_t* next_roll_ptr);
 
+/** Get a version of the next key record, and build k-ridge rollback pointer.
+ Save a version in prebuilt struct */
 void trx_undo_get_next_rec_from_k_ridge(
 		row_prebuilt_t* prebuilt, 
 		roll_ptr_t next_roll_ptr);

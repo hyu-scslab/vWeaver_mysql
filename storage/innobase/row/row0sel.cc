@@ -5321,7 +5321,7 @@ rec_loop:
 
 #ifdef SCSLAB_CVC
       mem_heap_t* cvc_old_vers_heap = nullptr;
-      if (rec_is_user_record(rec, index)) {
+      if (rec_is_user_record(rec, index) && moves_up) {
         /* If it is not range-query, disable k-ridge roll ptr */
         if (record_buffer == nullptr || match_mode == ROW_SEL_EXACT) {
           prebuilt->k_ridge_roll_ptr = 0;
@@ -5347,7 +5347,7 @@ rec_loop:
           (void)trx_undo_specific_version_build(
               rec, &mtr, rec, index, k_ridge_offsets, 
               k_ridge_heap, &k_ridge_version, NULL, NULL, 0, nullptr, 
-              prebuilt->k_ridge_roll_ptr, next_trx_id, next_roll_ptr); 
+              prebuilt->k_ridge_roll_ptr, &next_trx_id, &next_roll_ptr); 
           
           /* Compare record key to k-ridge record key */
           if (!cmp_rec_rec_pk(
@@ -5376,8 +5376,6 @@ rec_loop:
               }
               ut_ad(false);
               ut_a(false);
-              rec = old_vers;
-              prev_rec = rec;
             } else {
               ut_ad(false);
               ut_a(false);
@@ -5396,7 +5394,7 @@ rec_loop:
               (void)trx_undo_specific_version_build(
                   rec, &mtr, k_ridge_version, index, k_ridge_offsets,
                   k_ridge_heap, &k_ridge_next_version, NULL, NULL,
-                  0, nullptr, next_roll_ptr, next_trx_id, next_roll_ptr);
+                  0, nullptr, next_roll_ptr, &next_trx_id, &next_roll_ptr);
               
               if (prebuilt->old_vers_heap) {
                 mem_heap_empty(prebuilt->old_vers_heap);
@@ -5486,15 +5484,16 @@ rec_loop:
         if (old_vers == NULL) {
           /* The row did not exist yet in
           the read view */
+#ifdef SCSLAB_CVC
+          prebuilt->k_ridge_roll_ptr = 0;
+#endif /* SCSLAB_CVC */
           goto next_rec;
         }
 
         rec = old_vers;
         prev_rec = rec;
       }
-#ifdef SCSLAB_CVC
-#ifdef SCSLAB_CVC_VALIDATION
-
+#if defined(SCSLAB_CVC) && defined(SCSLAB_CVC_VALIDATION)
       if (rec_is_user_record(rec, index)) {
         /* Found version in rec with k-ridge */
         mem_heap_t* debug_heap = mem_heap_create(1024);
@@ -5552,12 +5551,7 @@ rec_loop:
         
         mem_heap_free(debug_heap);
       }
-#endif /* SCSLAB_CVC_VALIDATION */
-      if (rec_is_user_record(rec, index) && 
-          (record_buffer == nullptr || match_mode == ROW_SEL_EXACT)) {
-        prebuilt->k_ridge_roll_ptr = 0;
-      }
-#endif /* SCSLAB_CVC */
+#endif /* SCSLAB_CVC && SCSLAB_CVC_VALIDATION */
     } else {
       /* We are looking into a non-clustered index,
       and to get the right version of the record we
@@ -6188,6 +6182,13 @@ normal_return:
 #endif
 
 func_exit:
+#ifdef SCSLAB_CVC
+  if ((match_mode != 0 || record_buffer == nullptr) &&
+      prebuilt->k_ridge_roll_ptr != 0) {
+    prebuilt->k_ridge_roll_ptr = 0;
+  }
+#endif /* SCSLAB_CVC */
+
   trx->op_info = "";
 
   if (end_range_cache != NULL) {

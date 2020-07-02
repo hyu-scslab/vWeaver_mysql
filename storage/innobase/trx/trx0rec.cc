@@ -3596,7 +3596,7 @@ bool trx_undo_specific_version_build(
     const dict_index_t *const index, ulint *offsets, mem_heap_t *heap,
     rec_t **old_vers, mem_heap_t *v_heap, const dtuple_t **vrow, 
     ulint v_status, lob::undo_vers_t *lob_undo, roll_ptr_t k_ridge_roll_ptr, 
-    trx_id_t& next_trx_id, roll_ptr_t& next_roll_ptr) 
+    trx_id_t* next_trx_id, roll_ptr_t* next_roll_ptr) 
 {
   DBUG_TRACE;
 
@@ -3652,8 +3652,8 @@ bool trx_undo_specific_version_build(
   ptr = trx_undo_update_rec_get_sys_cols(
       ptr, &trx_id, &roll_ptr, &info_bits, &cvc_info);
 
-  next_trx_id = cvc_info.next_trx_id;
-  next_roll_ptr = cvc_info.next_roll_ptr;
+  *next_trx_id = cvc_info.next_trx_id;
+  *next_roll_ptr = cvc_info.next_roll_ptr;
 
   /* (a) If a clustered index record version is such that the
   trx id stamp in it is bigger than purge_sys->view, then the
