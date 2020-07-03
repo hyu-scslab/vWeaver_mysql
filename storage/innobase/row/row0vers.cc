@@ -1237,6 +1237,138 @@ ibool row_vers_old_has_index_entry(
   }
 }
 
+///////////* compare function implementation   *////
+#if defined(SCSLAB_CVC) && defined(SCSLAB_CVC_VALIDATION)
+void row_vers_compare_vridge_to_vanilla_for_validation(
+  const rec_t *rec, mtr_t * mtr, dict_index_t * index, ulint ** offsets,
+  ReadView * view, mem_heap_t ** offset_heap, mem_heap_t * in_heap,
+  rec_t * old_vers, const dtuple_t **vrow, lob::undo_vers_t * lob_undo)
+{  
+  const rec_t * validation_version;
+  rec_t *validation_prev_version;
+  rec_t *validation_old_vers;
+  trx_id_t validation_trx_id;
+  mem_heap_t * validation_heap = NULL;
+  mem_heap_t * buf_heap;
+  byte * validation_buf;
+
+  validation_trx_id = row_get_rec_trx_id(rec, index, *offsets);
+
+  validation_version = rec;
+
+  for (;;) {
+    mem_heap_t *validation_prev_heap = validation_heap;
+
+    validation_heap = mem_heap_create(1024);
+
+    /* If purge can't see the record then we can't rely on
+       the UNDO log record. */
+
+    if (vrow) {
+      *vrow = NULL;
+    }
+
+    trx_undo_prev_version_build(rec, mtr, validation_version, index, *offsets, 
+                                validation_heap, &validation_prev_version, NULL,
+                                vrow, 0, lob_undo);
+
+    if (validation_prev_heap != NULL) {
+      mem_heap_free(validation_prev_heap);
+    }
+
+    if (validation_prev_version == NULL) {
+      if(*old_vers) {
+        ib::error() << "VRIDGE found visible version, but there is no "
+                   << " visible version in real.";
+        ut_a(false);
+      }
+      break;
+    }
+
+    *offsets = rec_get_offsets(validation_prev_version, index, *offsets, 
+                               ULINT_UNDEFINED, offset_heap);
+
+#if defined UNIV_DEBUG || defined UNIV_BLOB_LIGHT_DEBUG
+    ut_a(!rec_offs_any_null_extern(validation_prev_version, *offsets));
+#endif /* UNIV_DEBUG || UNIV_BLOB_LIGHT_DEBUG */
+
+    validation_trx_id = row_get_rec_trx_id(validation_prev_version, index,
+                                           *offsets);
+
+    if (view->changes_visible(validation_trx_id, index->table->name)) {
+      /* The view already sees this version: we can copy
+      it to in_heap and return */
+
+      if (!(*old_vers)) {
+        ib::error() << "Vridge couldn't found visible version but there "
+                   << "is visible version in real.";
+        ut_a(false);
+        mem_heap_free(validation_heap);
+        return;
+      }
+
+      buf_heap = mem_heap_create(1024);
+
+      validation_buf = static_cast<byte *>(mem_heap_alloc(buf_heap,
+                                            rec_offs_size(*offsets)));
+
+      validation_old_vers = rec_copy(validation_buf, validation_prev_version,
+                                     *offsets);
+      rec_offs_make_valid(validation_old_vers, index, *offsets);
+
+      if (vrow && *vrow) {
+        *vrow = dtuple_copy(*vrow, in_heap);
+        dtuple_dup_v_fld(*vrow, in_heap);
+      }
+
+      if(memcmp(rec_get_start(old_vers, *offsets), 
+                  rec_get_start(validation_old_vers, *offsets), 
+                    rec_offs_size(*offsets))) {
+        trx_id_t vridge_id = row_get_rec_trx_id(old_vers, index, *offsets);
+        trx_id_t raw_id = row_get_rec_trx_id(validation_old_vers, index, *offsets);
+
+        if(vridge_id != raw_id) {
+          ib::error() << vridge_id;
+          ib::error() << raw_id;
+          ut_a(false);
+        }
+        
+        ulint vridge_n_fields =  rec_get_n_fields(old_vers, index);
+        ulint raw_n_fields = rec_get_n_fields(validation_old_vers, index);
+        ulint vridge_flen, raw_flen;
+        
+        if (vridge_n_fields != raw_n_fields) {
+          ib::error() << vridge_n_fields;
+          ib::error() << raw_n_fields;
+          ut_a(false);
+        } else {
+          for(ulint k = 0 ; k < vridge_n_fields ; k++) {
+            byte *vridge_field = rec_get_nth_field(old_vers, *offsets, k,
+                                                  &vridge_flen);
+            byte *raw_field = rec_get_nth_field(validation_old_vers, *offsets,
+                                                k, &raw_flen);
+            
+            if(vridge_flen != raw_flen) {
+              ib::error() << vridge_flen;
+              ib::error() << raw_flen;
+              ut_a(false);
+            } else if(memcmp(vridge_field, raw_field, vridge_flen)) {
+              ib::error() << "Record Col Num : " << k;
+              ut_a(false);
+            }
+          }
+        }
+      }
+      mem_heap_free(validation_heap);
+      mem_heap_free(buf_heap);
+      break;
+    }
+
+    validation_version = validation_prev_version;
+  }
+}
+#endif /* SCSLAB_CVC & SCSLAB_CVC_VALIDATION */
+
 /** Constructs the version of a clustered index record which a consistent
  read should see. We assume that the trx id stored in rec is such that
  the consistent read should not see rec in its present version.
@@ -1320,6 +1452,14 @@ dberr_t row_vers_build_for_consistent_read(
     if (prev_version == NULL) {
       /* It was a freshly inserted version */
       *old_vers = NULL;
+
+#ifdef SCSLAB_CVC_VALIDATION
+      row_vers_compare_vridge_to_vanilla_for_validation(rec, mtr, index, 
+                                                        offsets, view, 
+                                                        offset_heap, in_heap,
+                                                        *old_vers, vrow, 
+                                                        lob_undo);
+#endif /* SCSLAB_CVC_VALIDATION */
       mem_heap_free(heap);
       ut_ad(!vrow || !(*vrow));
       return err;
@@ -1335,8 +1475,15 @@ dberr_t row_vers_build_for_consistent_read(
     buf = static_cast<byte *>(mem_heap_alloc(in_heap,
                                              rec_offs_size(*offsets)));
 
+
     *old_vers = rec_copy(buf, prev_version, *offsets);
     rec_offs_make_valid(*old_vers, index, *offsets);
+
+#ifdef SCSLAB_CVC_VALIDATION
+  row_vers_compare_vridge_to_vanilla_for_validation(rec, mtr, index, offsets,
+                                                    view, offset_heap, in_heap,
+                                                    *old_vers, vrow, lob_undo);
+#endif /* SCSLAB_CVC_VALIDATION */
 
     if (vrow && *vrow) {
       *vrow = dtuple_copy(*vrow, in_heap);

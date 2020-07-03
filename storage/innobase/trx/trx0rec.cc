@@ -296,8 +296,6 @@ static void trx_undo_set_ptr_to_k_ridge(const byte *&ptr) {
   /* vridge trx_id & roll ptr */
   mach_u64_read_next_compressed(&ptr);
   mach_u64_read_next_compressed(&ptr);
-  mach_u64_read_next_compressed(&ptr);
-  mach_u64_read_next_compressed(&ptr);
 }
 
 /** Set next roll pointer loacted in undo log record to next_roll_ptr */
@@ -1548,7 +1546,6 @@ bool trx_get_next_equal_or_higher_level_ridge(
       prev_undo_info->vridge_level = found_info.vridge_level;
       prev_undo_info->vridge_trx_id = found_info.vridge_trx_id;
       prev_undo_info->vridge_roll_ptr = found_info.vridge_roll_ptr;
-      prev_undo_info->vridge_prev_trx_id = found_info.vridge_prev_trx_id;
       return true;
     }
     if (!found_info.vridge_level) {
@@ -1628,7 +1625,8 @@ static ulint trx_undo_page_report_modify(
   ut_ad(first_free <= UNIV_PAGE_SIZE);
 
 #ifdef SCSLAB_CVC
-  if (trx_undo_left(undo_page, ptr) < 50 + VRIDGE_ADDITIONAL_SPACE_IN_UNDO + KRIDGE_ADDITIONAL_SPACE_IN_UNDO) {
+  if (trx_undo_left(undo_page, ptr) < 50 +
+      VRIDGE_ADDITIONAL_SPACE_IN_UNDO + KRIDGE_ADDITIONAL_SPACE_IN_UNDO) {
 #else
   if (trx_undo_left(undo_page, ptr) < 50) {
 #endif
@@ -1714,9 +1712,6 @@ static ulint trx_undo_page_report_modify(
                  pointer.
    vridge_trx_id - the version of undo log checked by following vridge
    vridge_roll_ptr - the rollback pointer of vridge
-   prev_trx_id - the prev version of undo log by following origin rollback 
-                 pointer
-   vridge_prev_trx_id - the prev version of undo log by following vridge
 
    next_roll_ptr - next rollback pointer
    next_trx_id - next transaction id
@@ -1732,8 +1727,6 @@ static ulint trx_undo_page_report_modify(
     *ptr++ = undo_info->vridge_level;
     ptr += mach_u64_write_compressed(ptr, undo_info->vridge_trx_id);
     ptr += mach_u64_write_compressed(ptr, undo_info->vridge_roll_ptr);
-    ptr += mach_u64_write_compressed(ptr, undo_info->prev_trx_id);
-    ptr += mach_u64_write_compressed(ptr, undo_info->vridge_prev_trx_id);
 
     mach_write_to_8(ptr, undo_info->next_roll_ptr);
     ptr += 8;
@@ -2333,8 +2326,6 @@ byte *trx_undo_update_rec_get_sys_cols(
       ptr += 1;
       prev_undo_info->vridge_trx_id = mach_u64_read_next_compressed(&ptr);
       prev_undo_info->vridge_roll_ptr = mach_u64_read_next_compressed(&ptr);
-      prev_undo_info->prev_trx_id = mach_u64_read_next_compressed(&ptr);
-      prev_undo_info->vridge_prev_trx_id = mach_u64_read_next_compressed(&ptr);
 
       prev_undo_info->next_roll_ptr = mach_read_from_8(ptr);
       ptr += 8;
@@ -2342,8 +2333,6 @@ byte *trx_undo_update_rec_get_sys_cols(
       prev_undo_info->k_ridge_roll_ptr = mach_u64_read_next_compressed(&ptr);
     } else {
       ptr += 1;
-      mach_u64_read_next_compressed(&ptr);
-      mach_u64_read_next_compressed(&ptr);
       mach_u64_read_next_compressed(&ptr);
       mach_u64_read_next_compressed(&ptr);
 
@@ -2775,7 +2764,6 @@ void trx_undo_get_cvc_info_from_prev_undo(rec_t * rec,
     // if record is first version
     rec_roll_ptr = VRIDGE_NULL;
     rec_trx_id = VRIDGE_NULL;
-    prev_trx_id =  VRIDGE_NULL;
     prev_undo_info.level = VRIDGE_NULL;
     prev_undo_info.vridge_level = VRIDGE_NULL;
   } else {
@@ -2789,20 +2777,14 @@ void trx_undo_get_cvc_info_from_prev_undo(rec_t * rec,
 
   if (coin) {
      prev_undo_info.level++;
-     if (prev_undo_info.level <= prev_undo_info.vridge_level) {
-      prev_undo_info.prev_trx_id = prev_trx_id;
-     } else {
-      if (prev_undo_info.vridge_level 
+     if (!(prev_undo_info.level <= prev_undo_info.vridge_level)) {
+      if (!(prev_undo_info.vridge_level 
           && trx_get_next_equal_or_higher_level_ridge(index, 
                                            prev_undo_info.level,
-                                           &prev_undo_info)) {
-          prev_undo_info.prev_trx_id = prev_trx_id;
-      } else {
+                                           &prev_undo_info))) {
         prev_undo_info.vridge_level = VRIDGE_NULL;
         prev_undo_info.vridge_trx_id = VRIDGE_NULL;
         prev_undo_info.vridge_roll_ptr = VRIDGE_NULL;
-        prev_undo_info.vridge_prev_trx_id = VRIDGE_NULL;
-        prev_undo_info.prev_trx_id = prev_trx_id;
       }
     }
   } else {
@@ -2810,16 +2792,14 @@ void trx_undo_get_cvc_info_from_prev_undo(rec_t * rec,
     prev_undo_info.level = GROUND_LEVEL;
     prev_undo_info.vridge_trx_id = rec_trx_id;
     prev_undo_info.vridge_roll_ptr = rec_roll_ptr;
-    prev_undo_info.vridge_prev_trx_id = prev_trx_id;
-    prev_undo_info.prev_trx_id = prev_trx_id;
   }
 
   prev_undo_info.next_roll_ptr = 0;
   prev_undo_info.next_trx_id = trx->id;
   
   ut_ad(pcur->get_rec() == rec);
-  prev_undo_info.k_ridge_roll_ptr = 
-  trx_undo_get_k_ridge_in_upd(pcur, mtr, trx, index);
+  prev_undo_info.k_ridge_roll_ptr =
+    trx_undo_get_k_ridge_in_upd(pcur, mtr, trx, index);
 }
 
 #endif /* SCSLAB_CVC */
@@ -3241,17 +3221,23 @@ byte* trx_get_undo_rec_following_ridge(
     ptr = trx_undo_rec_get_pars(undo_rec, ptype, &cmpl_info, &dummy_extern,
                                 &undo_no, &table_id, type_cmpl);
 
-    if (*ptype == TRX_UNDO_INSERT_REC) {
-      return NULL;
-    }
-
     ptr = trx_undo_update_rec_get_sys_cols(ptr, &ori_trx_id, &ori_roll_ptr,
                                            pinfo_bits, &found_info);
+
+    if (view->changes_visible(ori_trx_id, index->table->name)) {
+      *ptrx_id = ori_trx_id;
+      *proll_ptr = ori_roll_ptr;
+      return ptr;
+    }
+
+    if (trx_undo_roll_ptr_is_insert(ori_roll_ptr)) {
+      return NULL;
+    }
   }
 
   while (true) {
-    if (found_info.vridge_prev_trx_id 
-      && !view->changes_visible(found_info.vridge_prev_trx_id,
+    if (found_info.vridge_trx_id 
+      && !view->changes_visible(found_info.vridge_trx_id,
                                 index->table->name)) {
       mem_heap_free(*pheap);
       *pheap = mem_heap_create(1024);
@@ -3263,9 +3249,7 @@ byte* trx_get_undo_rec_following_ridge(
                                   &undo_no, &table_id, type_cmpl);
       ptr = trx_undo_update_rec_get_sys_cols(ptr, &ori_trx_id, &ori_roll_ptr, 
                                              pinfo_bits, &found_info); 
-    } else if (found_info.prev_trx_id 
-               && !view->changes_visible(found_info.prev_trx_id,
-                                         index->table->name)) {
+    } else if (!view->changes_visible(ori_trx_id, index->table->name)) {
       mem_heap_free(*pheap);
       *pheap = mem_heap_create(1024);
       undo_rec = trx_undo_get_undo_rec_in_vridge_list(ori_roll_ptr,
@@ -3275,27 +3259,15 @@ byte* trx_get_undo_rec_following_ridge(
                                   &undo_no, &table_id, type_cmpl);
       ptr = trx_undo_update_rec_get_sys_cols(ptr, &ori_trx_id, &ori_roll_ptr,
                                              pinfo_bits, &found_info); 
-    } else {
-      if (ori_trx_id && view->changes_visible(ori_trx_id, index->table->name)) {
+    } 
+    
+    if (view->changes_visible(ori_trx_id, index->table->name)) {
         *ptrx_id = ori_trx_id;
         *proll_ptr = ori_roll_ptr;
         break;
-      } else if (found_info.prev_trx_id &&
-                 view->changes_visible(found_info.prev_trx_id, 
-                                       index->table->name)) {
-        mem_heap_free(*pheap);
-        *pheap = mem_heap_create(1024);
-        undo_rec = trx_undo_get_undo_rec_in_vridge_list(ori_roll_ptr,
-                                                        is_temp, &mtr, pheap);
+    }
 
-        ptr = trx_undo_rec_get_pars(undo_rec, ptype, &cmpl_info, &dummy_extern,
-                                    &undo_no, &table_id, type_cmpl);
-        ptr = trx_undo_update_rec_get_sys_cols(ptr, &ori_trx_id, &ori_roll_ptr,
-                                               pinfo_bits, &found_info);
-        *ptrx_id = ori_trx_id;
-        *proll_ptr = ori_roll_ptr;
-        break;
-      }
+    if (trx_undo_roll_ptr_is_insert(ori_roll_ptr)) {
       return NULL;
     }
   }

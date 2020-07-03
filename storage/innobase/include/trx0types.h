@@ -164,7 +164,7 @@ typedef ib_id_t undo_no_t;
 /** First level in vridge level*/
 #define GROUND_LEVEL 1
 /** Extra space to add to undo log in vridge structure*/
-#define VRIDGE_ADDITIONAL_SPACE_IN_UNDO 40
+#define VRIDGE_ADDITIONAL_SPACE_IN_UNDO 24
 
 /** Extra space for k-ridge */
 #define KRIDGE_ADDITIONAL_SPACE_IN_UNDO 24
@@ -178,14 +178,11 @@ typedef struct __cvc_info_cache__
   cvc_level_t vridge_level;    /* level seen when follwing vridge roll pointer*/
   trx_id_t vridge_trx_id;      /* the id of trx that made undo log to follow 
                                   vridge */
-  trx_id_t vridge_prev_trx_id; /* the id of trx of undo log to follow vridge*/
-  trx_id_t prev_trx_id;        /* the id of trx of undo log to follow origin
-                                  rollback pointer*/
   roll_ptr_t vridge_roll_ptr;  /* the rollback pointer to follow vridge*/
 
-	roll_ptr_t next_roll_ptr;		/* next rollback pointer */
-	roll_ptr_t k_ridge_roll_ptr;	/* kridge rollback pointer */
-  trx_id_t next_trx_id;
+  roll_ptr_t next_roll_ptr;		  /* next rollback pointer */
+  trx_id_t next_trx_id;         /* next transaction id */
+  roll_ptr_t k_ridge_roll_ptr;	/* kridge rollback pointer */
 
 } cvc_info_cache;
 
