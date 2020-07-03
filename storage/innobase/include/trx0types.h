@@ -171,9 +171,6 @@ typedef struct __cvc_info_cache__
   cvc_level_t vridge_level;    /* level seen when follwing vridge roll pointer*/
   trx_id_t vridge_trx_id;      /* the id of trx that made undo log to follow 
                                   vridge */
-  trx_id_t vridge_prev_trx_id; /* the id of trx of undo log to follow vridge*/
-  trx_id_t prev_trx_id;        /* the id of trx of undo log to follow origin
-                                  rollback pointer*/
   roll_ptr_t vridge_roll_ptr;  /* the rollback pointer to follow vridge*/
 } cvc_info_cache;
 #endif
