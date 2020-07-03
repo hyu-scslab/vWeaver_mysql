@@ -3056,7 +3056,7 @@ bool trx_undo_prev_version_build_in_vridge(
     ut_a(ptr);
 
     if (row_upd_changes_field_size_or_external(index, offsets, update)) {
-      ut_a(ptr);
+      ut_a(false);
     } else {
       buf = static_cast<byte *>(mem_heap_alloc(*heap,
                                                rec_offs_size(offsets)));

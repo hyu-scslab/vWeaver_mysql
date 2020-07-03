@@ -1277,6 +1277,11 @@ void row_vers_compare_vridge_to_vanilla_for_validation(
     }
 
     if (validation_prev_version == NULL) {
+      if(*old_vers) {
+        ib::error() << "VRIDGE found visible version, but there is no "
+                   << " visible version in real.";
+        ut_a(false);
+      }
       break;
     }
 
@@ -1284,7 +1289,7 @@ void row_vers_compare_vridge_to_vanilla_for_validation(
                                ULINT_UNDEFINED, offset_heap);
 
 #if defined UNIV_DEBUG || defined UNIV_BLOB_LIGHT_DEBUG
-    ut_a(!rec_offs_any_null_extern(prev_version, *offsets));
+    ut_a(!rec_offs_any_null_extern(validation_prev_version, *offsets));
 #endif /* UNIV_DEBUG || UNIV_BLOB_LIGHT_DEBUG */
 
     validation_trx_id = row_get_rec_trx_id(validation_prev_version, index,
@@ -1293,6 +1298,14 @@ void row_vers_compare_vridge_to_vanilla_for_validation(
     if (view->changes_visible(validation_trx_id, index->table->name)) {
       /* The view already sees this version: we can copy
       it to in_heap and return */
+
+      if (!(*old_vers)) {
+        ib::error() << "Vridge couldn't found visible version but there "
+                   << "is visible version in real.";
+        ut_a(false);
+        mem_heap_free(validation_heap);
+        return;
+      }
 
       buf_heap = mem_heap_create(1024);
 
@@ -1308,7 +1321,6 @@ void row_vers_compare_vridge_to_vanilla_for_validation(
         dtuple_dup_v_fld(*vrow, in_heap);
       }
 
-      bool differ_flags = false;
       if(memcmp(rec_get_start(old_vers, *offsets), 
                   rec_get_start(validation_old_vers, *offsets), 
                     rec_offs_size(*offsets))) {
@@ -1316,10 +1328,9 @@ void row_vers_compare_vridge_to_vanilla_for_validation(
         trx_id_t raw_id = row_get_rec_trx_id(validation_old_vers, index, *offsets);
 
         if(vridge_id != raw_id) {
-          ib::warn() << vridge_id;
-          ib::warn() << raw_id;
-        } else {
-          ib::warn() << "TRX IDs ARE SAME";
+          ib::error() << vridge_id;
+          ib::error() << raw_id;
+          ut_a(false);
         }
         
         ulint vridge_n_fields =  rec_get_n_fields(old_vers, index);
@@ -1327,26 +1338,24 @@ void row_vers_compare_vridge_to_vanilla_for_validation(
         ulint vridge_flen, raw_flen;
         
         if (vridge_n_fields != raw_n_fields) {
-          ib::warn() << vridge_n_fields;
-          ib::warn() << raw_n_fields;
+          ib::error() << vridge_n_fields;
+          ib::error() << raw_n_fields;
+          ut_a(false);
         } else {
-          ib::warn() << "THE NUMBER OF FIELD ARE SAME";
-          for(int k = 0 ; k < vridge_n_fields ; k++) {
+          for(ulint k = 0 ; k < vridge_n_fields ; k++) {
             byte *vridge_field = rec_get_nth_field(old_vers, *offsets, k,
                                                   &vridge_flen);
             byte *raw_field = rec_get_nth_field(validation_old_vers, *offsets,
                                                 k, &raw_flen);
             
             if(vridge_flen != raw_flen) {
-              ib::warn() << vridge_flen;
-              ib::warn() << raw_flen;
+              ib::error() << vridge_flen;
+              ib::error() << raw_flen;
+              ut_a(false);
             } else if(memcmp(vridge_field, raw_field, vridge_flen)) {
-              ib::warn() << "Record Col Num : " << k;
-              differ_flags = true;
+              ib::error() << "Record Col Num : " << k;
+              ut_a(false);
             }
-          }
-          if (!differ_flags) {
-            ib::warn() << "THERE ARE NO DIFFERENT FIELDs IN RECORD";
           }
         }
       }
@@ -1444,6 +1453,14 @@ dberr_t row_vers_build_for_consistent_read(
     if (prev_version == NULL) {
       /* It was a freshly inserted version */
       *old_vers = NULL;
+
+#ifdef SCSLAB_CVC_VALIDATION
+      row_vers_compare_vridge_to_vanilla_for_validation(rec, mtr, index, 
+                                                        offsets, view, 
+                                                        offset_heap, in_heap,
+                                                        *old_vers, vrow, 
+                                                        lob_undo);
+#endif
       mem_heap_free(heap);
       ut_ad(!vrow || !(*vrow));
       return err;
@@ -1463,16 +1480,17 @@ dberr_t row_vers_build_for_consistent_read(
     *old_vers = rec_copy(buf, prev_version, *offsets);
     rec_offs_make_valid(*old_vers, index, *offsets);
 
-    if (vrow && *vrow) {
-      *vrow = dtuple_copy(*vrow, in_heap);
-      dtuple_dup_v_fld(*vrow, in_heap);
-    }
-
 #ifdef SCSLAB_CVC_VALIDATION
   row_vers_compare_vridge_to_vanilla_for_validation(rec, mtr, index, offsets,
                                                     view, offset_heap, in_heap,
                                                     *old_vers, vrow, lob_undo);
 #endif
+
+    if (vrow && *vrow) {
+      *vrow = dtuple_copy(*vrow, in_heap);
+      dtuple_dup_v_fld(*vrow, in_heap);
+    }
+
     mem_heap_free(heap);
     return err;
 
