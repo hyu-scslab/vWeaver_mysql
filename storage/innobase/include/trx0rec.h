@@ -499,6 +499,10 @@ void trx_undo_get_next_rec_from_k_ridge(
 
 #endif /* SCSLAB_CVC */
 
+#ifdef SCSLAB_JS 
+uint64_t js_get_time();
+
+#endif
 #include "trx0rec.ic"
 
 #endif /* !UNIV_HOTBACKUP */

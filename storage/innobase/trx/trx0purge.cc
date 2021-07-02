@@ -62,6 +62,22 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include "trx0rseg.h"
 #include "trx0trx.h"
 
+#ifdef SCSLAB_CVC
+#include "ut0queue.h"
+
+GCHelper *gc_helper = NULL;
+trx_id_t gc_max_trx_id = 0;
+#endif
+
+#ifdef JS_SPACE
+#include <chrono>
+using namespace std;
+
+ulint curr_total_size;
+chrono::system_clock::time_point base_time = chrono::system_clock::now();
+chrono::duration<double> duration_time;
+#endif
+
 /** Maximum allowable purge history length.  <=0 means 'infinite'. */
 ulong srv_max_purge_lag = 0;
 
@@ -248,6 +264,10 @@ void trx_purge_sys_create(ulint n_purge_threads, purge_pq_t *purge_queue) {
 
   /* Allocate 8K bytes for the initial heap. */
   purge_sys->heap = mem_heap_create(8 * 1024);
+
+#ifdef SCSLAB_CVC
+  gc_helper = new GCHelper();
+#endif
 }
 
 /************************************************************************
@@ -288,6 +308,11 @@ void trx_purge_sys_close(void) {
   ut_free(purge_sys);
 
   purge_sys = NULL;
+
+#ifdef SCSLAB_CVC
+  delete gc_helper;
+  gc_helper = NULL;
+#endif
 }
 
 /*================ UNDO LOG HISTORY LIST =============================*/
@@ -401,7 +426,6 @@ static void trx_purge_free_segment(trx_rseg_t *rseg, fil_addr_t hdr_addr,
   ulint seg_size;
   ulint hist_size;
   bool marked = noredo;
-
   for (;;) {
     page_t *undo_page;
 
@@ -554,11 +578,18 @@ loop:
 
     /* calls the trx_purge_remove_log_hdr()
     inside trx_purge_free_segment(). */
-    trx_purge_free_segment(rseg, hdr_addr, is_temp);
+    
+
+#ifdef SCSLAB_CVC
+   //trx_purge_free_segment(rseg, hdr_addr, is_temp);
+   if(gc_helper->push_element(gc_max_trx_id, rseg->space_id, hdr_addr.page, 
+        hdr_addr.boffset, trx_purge_free_segment, rseg, hdr_addr, is_temp)){
+   }
+#else
+   trx_purge_free_segment(rseg, hdr_addr, is_temp);
+#endif
 
   } else {
-    /* Remove the log hdr from the rseg history. */
-
     trx_purge_remove_log_hdr(rseg_hdr, log_hdr, &mtr);
 
     mutex_exit(&(rseg->mutex));
@@ -1171,8 +1202,12 @@ static bool trx_purge_mark_undo_for_truncate() {
   space_id_t first_space_num_scanned = space_num;
   do {
     undo::Tablespace *undo_space = undo::spaces->find(space_num);
-
+#ifdef SCSLAB_CVC
+    if (gc_helper->check_truncation(undo_space->id()) &&
+        undo_space->needs_truncation()) {
+#else
     if (undo_space->needs_truncation()) {
+#endif
       /* Tablespace qualifies for truncate. */
       undo_trunc->increment_scan();
       undo_trunc->mark(undo_space);
@@ -1245,6 +1280,11 @@ static bool trx_purge_check_if_marked_undo_is_empty(purge_iter_t *limit) {
       break;
     }
   }
+#ifdef SCSLAB_CVC
+  if (all_free && !gc_helper->check_truncation(marked_space->id())) {
+    all_free = false;
+  }
+#endif
 
   if (all_free) {
     undo_trunc->set_marked_space_empty();
@@ -1412,6 +1452,7 @@ static bool trx_purge_truncate_marked_undo() {
   std::string space_name = marked_space->space_name();
   undo::spaces->s_unlock();
 
+
   ib::info(ER_IB_MSG_1169) << "Truncating UNDO tablespace '"
                            << space_name.c_str() << "'.";
 
@@ -1509,7 +1550,7 @@ static void trx_purge_truncate_history(
     const ReadView *view) /*!< in: purge view */
 {
   ulint i;
-
+  
   MONITOR_INC_VALUE(MONITOR_PURGE_TRUNCATE_HISTORY_COUNT, 1);
   auto counter_time_truncate_history = ut_time_monotonic_us();
 
@@ -1532,10 +1573,14 @@ static void trx_purge_truncate_history(
   undo::spaces->s_lock();
   for (auto undo_space : undo::spaces->m_spaces) {
     /* Purge rollback segments in this undo tablespace. */
+      undo_space->id();
     undo_space->rsegs()->s_lock();
     for (auto rseg : *undo_space->rsegs()) {
       trx_purge_truncate_rseg_history(rseg, limit);
     }
+#ifdef SCSLAB_CVC
+    gc_helper->pop_elements(purge_sys->view.low_limit_id());
+#endif
     undo_space->rsegs()->s_unlock();
   }
   ulint space_count = undo::spaces->size();
@@ -1546,16 +1591,26 @@ static void trx_purge_truncate_history(
   Use an s-lock for the whole list since it can have gaps and
   may be sorted when added to. */
   trx_sys->rsegs.s_lock();
+
   for (auto rseg : trx_sys->rsegs) {
     trx_purge_truncate_rseg_history(rseg, limit);
   }
+#ifdef SCSLAB_CVC
+  gc_helper->pop_elements(purge_sys->view.low_limit_id());
+#endif
+
   trx_sys->rsegs.s_unlock();
 
   /* Purge rollback segments in the temporary tablespace. */
   trx_sys->tmp_rsegs.s_lock();
+
   for (auto rseg : trx_sys->tmp_rsegs) {
     trx_purge_truncate_rseg_history(rseg, limit);
   }
+#ifdef SCSLAB_CVC
+  gc_helper->pop_elements(purge_sys->view.low_limit_id());
+#endif
+
   trx_sys->tmp_rsegs.s_unlock();
 
   MONITOR_INC_TIME_IN_MICRO_SECS(MONITOR_PURGE_TRUNCATE_HISTORY_MICROSECOND,
@@ -2200,7 +2255,32 @@ ulint trx_purge(ulint n_purge_threads, /*!< in: number of purge tasks
                                        to purge in one batch */
                 bool truncate)         /*!< in: truncate history if true */
 {
+#ifdef JS_SPACE
+  duration_time = chrono::system_clock::now() - base_time;
+  ulint curr_rseg_size;
+  if (duration_time.count() >= 2.0) {
+    curr_total_size = 0;
+    mutex_enter(&(undo::ddl_mutex));
+    undo::spaces->s_lock();
+    for (auto undo_space : undo::spaces->m_spaces) {
+      /* Purge rollback segments in this undo tablespace. */
+      curr_rseg_size = 0;
+      undo_space->id();
+      undo_space->rsegs()->s_lock();
+      for (auto rseg : *undo_space->rsegs()) {
+        curr_total_size += rseg->curr_size;
+        curr_rseg_size += rseg->curr_size;
+      }
+      undo_space->rsegs()->s_unlock();
+    }
+    undo::spaces->s_unlock();
+    mutex_exit(&(undo::ddl_mutex));
+
+    base_time = chrono::system_clock::now();
+  }
+#endif
   que_thr_t *thr = NULL;
+
   ulint n_pages_handled;
 
   ut_a(n_purge_threads > 0);
@@ -2215,10 +2295,13 @@ ulint trx_purge(ulint n_purge_threads, /*!< in: number of purge tasks
   purge_sys->view_active = false;
 
   trx_sys->mvcc->clone_oldest_view(&purge_sys->view);
-
   purge_sys->view_active = true;
 
   rw_lock_x_unlock(&purge_sys->latch);
+  
+#ifdef SCSLAB_CVC
+  gc_max_trx_id = trx_sys->mvcc->get_latest_view_max_trx_id();
+#endif
 
 #ifdef UNIV_DEBUG
   if (srv_purge_view_update_only_debug) {
@@ -2284,6 +2367,9 @@ ulint trx_purge(ulint n_purge_threads, /*!< in: number of purge tasks
     trx_purge_truncate();
   }
 
+#ifdef SCSLAB_CVC
+  //gc_helper->pop_elements(purge_sys->view.low_limit_id()); 
+#endif
   MONITOR_INC_VALUE(MONITOR_PURGE_INVOKED, 1);
   MONITOR_INC_VALUE(MONITOR_PURGE_N_PAGE_HANDLED, n_pages_handled);
 

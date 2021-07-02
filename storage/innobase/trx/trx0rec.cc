@@ -56,13 +56,45 @@ this program; if not, write to the Free Software Foundation, Inc.,
 
 #include "my_dbug.h"
 
-
 namespace dd {
 class Spatial_reference_system;
 }
+#ifdef SCSLAB_JS
+uint64_t js_get_time() {
+  struct timespec tms;
+  uint64_t micros = 0;
 
+  timespec_get(&tms, TIME_UTC);
+  micros += tms.tv_sec * 1000000;
+  micros += tms.tv_nsec/1000;
+
+  // return millisecs.
+  return micros/1000;
+}
+#endif
 
 #ifdef SCSLAB_CVC
+
+
+bool check_missing_history(
+    trx_id_t trx_id, 
+    dict_index_t* index)
+{
+  bool missing_history = true;
+  if (trx_id == VRIDGE_NULL)
+    return (missing_history);
+
+  ut_ad(!rw_lock_own(&purge_sys->latch, RW_LOCK_S));
+  rw_lock_s_lock(&purge_sys->latch);
+
+  missing_history = purge_sys->view.changes_visible(trx_id, index->table->name);
+
+  if (missing_history) {
+    rw_lock_s_unlock(&purge_sys->latch);
+  }
+
+  return (missing_history);
+}
 
 /** Get previous undo record in vridge structure.
 @param[in]      roll_ptr  rollback pointer to point previous undo record
@@ -76,6 +108,7 @@ trx_undo_rec_t *
                                        mtr_t * mtr,
                                        mem_heap_t ** pheap)
 {
+
   ibool is_insert;
   ulint rseg_id, offset;
   page_no_t page_no;
@@ -96,6 +129,7 @@ trx_undo_rec_t *
   // Get undo page
   undo_page = trx_undo_page_get_s_latched(page_id_t(space_id, page_no),
                                                     page_size, mtr);
+
   // Get undo record from undo page
   undo_rec = trx_undo_rec_copy(undo_page + offset, *pheap);
   mtr_commit(mtr);
@@ -106,10 +140,18 @@ trx_undo_rec_t *
 @param[in]   roll_ptr       rollback pointer to point previous undo record 
 @param[out]  p_prev_trx_id  previous undo log trx id
 @param[out]  prev_undo_info container of previous undo log information */
-void trx_undo_get_prev_undo_info(roll_ptr_t roll_ptr, 
-                                 trx_id_t * p_prev_trx_id,
-                                 cvc_info_cache * prev_undo_info) 
+void trx_undo_get_prev_undo_info(
+    roll_ptr_t roll_ptr,
+    trx_id_t * p_prev_trx_id,
+    cvc_info_cache * prev_undo_info) 
 {
+  /**
+    @jaeseon
+    This function is also called in update only.
+    You have to consider missing history case in here.
+    You should return nullptr when it's missing history,
+    and then deal with exceptional case in caller side.
+    **/
   ulint type, info_bits;
   ulint cmpl_info;
   bool dummy_extern;
@@ -140,7 +182,8 @@ void trx_undo_get_prev_undo_info(roll_ptr_t roll_ptr,
 /** Find the rollback pointer that indicates next key's last committed version.
     If rollback pointer is about insert, make ret_roll_ptr 0.
     @return k-ridge rollback pointer. */
-static roll_ptr_t trx_undo_get_k_ridge_in_upd(
+static void trx_undo_get_k_ridge_in_upd(
+    cvc_info_cache& cvc_info,
     btr_pcur_t* pcur,       /*!< in: cursor on the record to update */
     mtr_t* mtr,             /*!< in/out: mini-transaction */
     trx_t* trx,             /*!< in: transaction */ 
@@ -154,7 +197,7 @@ static roll_ptr_t trx_undo_get_k_ridge_in_upd(
   const rec_t* version;
   rec_t* prev_version;
   ReadView* view;
-  trx_id_t trx_id;
+  trx_id_t trx_id = 0;
   ulint offsets_[REC_OFFS_NORMAL_SIZE];
   ulint* offsets = offsets_;
   rec_offs_init(offsets_);
@@ -217,9 +260,11 @@ static roll_ptr_t trx_undo_get_k_ridge_in_upd(
     mem_heap_t* prev_heap = heap;
     heap = mem_heap_create(1024);
     
-    (void)trx_undo_prev_version_build(
+    if(!trx_undo_prev_version_build(
         ret_rec, mtr, version, index, offsets, 
-        heap, &prev_version, NULL, NULL, 0, nullptr);
+        heap, &prev_version, NULL, NULL, 0, nullptr)) {
+      ut_a(false);
+    }
     
     ut_a(prev_version != nullptr);
     
@@ -239,8 +284,10 @@ static roll_ptr_t trx_undo_get_k_ridge_in_upd(
     }
   }
 
+  trx_id = row_get_rec_trx_id(prev_version, index, offsets);
   ret_roll_ptr = row_get_rec_roll_ptr(prev_version, index, offsets);
 
+  
   if (trx_undo_roll_ptr_is_insert(ret_roll_ptr)) {
     ret_roll_ptr = 0;
   }
@@ -258,7 +305,12 @@ func_exit:
     btr_leaf_page_release(ret_block, BTR_SEARCH_LEAF, mtr);
   }
 
-  return ret_roll_ptr;
+  if (!ret_roll_ptr)
+    cvc_info.k_ridge_trx_id = 0;
+  else
+    cvc_info.k_ridge_trx_id = trx_id;
+
+  cvc_info.k_ridge_roll_ptr = ret_roll_ptr;
 }
 
 
@@ -302,6 +354,8 @@ static void trx_undo_set_ptr_to_k_ridge(const byte *&ptr) {
 static void trx_undo_set_next_roll_ptr(
     roll_ptr_t roll_ptr,        /*< in: rollback pointer in undo log record */
     roll_ptr_t next_roll_ptr,   /*< in: next rollback pointer to be set */
+    trx_id_t trx_id,            /*< in: trx_id for checking missing history */
+    dict_index_t* index,          /*< in: table name */
     mtr_t* mtr)                 /*< in/out: mini-transaction */
 {
   ibool is_insert;
@@ -311,6 +365,7 @@ static void trx_undo_set_next_roll_ptr(
   space_id_t space_id;
   bool found;
   const byte* ptr;
+  bool missing_history;
   
   ut_a(next_roll_ptr != 0 && !trx_undo_roll_ptr_is_insert(next_roll_ptr));
   trx_undo_decode_roll_ptr(roll_ptr, &is_insert, &rseg_id, &page_no, &offset);
@@ -318,11 +373,17 @@ static void trx_undo_set_next_roll_ptr(
   
   const page_size_t& page_size = fil_space_get_page_size(space_id, &found);
   ut_ad(found);
-  
+
+#ifdef SCSLAB_CVC // OK. VALID
+  missing_history = check_missing_history(trx_id, index);
+  if (missing_history) {
+    return;
+  }
+#endif 
   mtr_start(mtr);
   
   undo_page = trx_undo_page_get(page_id_t(space_id, page_no), page_size, mtr);
-  
+
   /* Set ptr to undo log record */
   ptr = undo_page + offset;
   
@@ -332,8 +393,12 @@ static void trx_undo_set_next_roll_ptr(
   /* We should guarantee that ptr is on next_roll_ptr in undo log record */
   ut_a(mach_read_from_8(ptr) == 0x00);
   mach_write_to_8(const_cast<unsigned char*>(ptr), next_roll_ptr);
-  
   mtr_commit(mtr);
+  
+#ifdef SCSLAB_CVC
+  if (!missing_history)
+    rw_lock_s_unlock(&purge_sys->latch);
+#endif 
 }
 
 /** Get k-ridge rollback pointer from a version that pointed by roll_ptr(in).
@@ -1532,13 +1597,23 @@ bool trx_get_next_equal_or_higher_level_ridge(
 {
   trx_id_t trx_id;
   cvc_info_cache found_info;
+  bool missing_history;
 
   found_info.vridge_roll_ptr = prev_undo_info->vridge_roll_ptr;
+  found_info.vridge_trx_id = prev_undo_info->vridge_trx_id;
 
   // re-try when rollback pointer from vridge points valid roll ptr
   while (!trx_undo_roll_ptr_is_insert(found_info.vridge_roll_ptr)) {
-    trx_undo_get_prev_undo_info(found_info.vridge_roll_ptr, &trx_id,
-                                &found_info);
+    missing_history = 
+      check_missing_history(found_info.vridge_trx_id, index);
+    if (missing_history) {
+      return false;
+    } else {
+      trx_undo_get_prev_undo_info(
+          found_info.vridge_roll_ptr, &trx_id, &found_info);
+
+      rw_lock_s_unlock(&purge_sys->latch);
+    }
 
     /** If found undo log's vridge level is higher than or equal to new level,
         this undo log's metadata is used. */
@@ -1732,7 +1807,16 @@ static ulint trx_undo_page_report_modify(
     ptr += 8;
     
     ptr += mach_u64_write_compressed(ptr, undo_info->next_trx_id);
-    ptr += mach_u64_write_compressed(ptr, undo_info->k_ridge_roll_ptr);
+
+    // Before write k-ridge roll ptr,
+    // You should check missing history.
+
+    if (undo_info->k_ridge_trx_id) {
+      ptr += mach_u64_write_compressed(ptr, undo_info->k_ridge_roll_ptr);
+    } else {
+      ut_a(undo_info->k_ridge_roll_ptr == 0);
+      ptr += mach_u64_write_compressed(ptr, undo_info->k_ridge_roll_ptr);
+    }
 
     ptr += mach_u64_write_compressed(ptr, trx_id);
     ptr += mach_u64_write_compressed(ptr, roll_ptr);
@@ -1820,6 +1904,8 @@ static ulint trx_undo_page_report_modify(
       ptr += mach_write_compressed(ptr, n_fields);
 
       for (i = 0 ; i < rec_get_n_fields(rec, index); i++) {
+        if ( rec_offs_nth_extern(offsets, pos) ) 
+           ut_a(false);
         if (!n_field_zero_flags && i == pos) {
           bool is_virtual = upd_fld_is_virtual_col(fld);
           bool is_multi_val = upd_fld_is_multi_value_col(fld);
@@ -2277,10 +2363,23 @@ static ulint trx_undo_page_report_modify(
 
   mach_write_to_2(ptr, first_free);
   ptr += 2;
+
+#ifdef JS_SPACE
+  uint16_t bef_offset = mach_read_from_2(
+      undo_page + TRX_UNDO_PAGE_HDR + TRX_UNDO_PAGE_FREE);
+#endif
   mach_write_to_2(undo_page + first_free, ptr - undo_page);
 
   mach_write_to_2(undo_page + TRX_UNDO_PAGE_HDR + TRX_UNDO_PAGE_FREE,
                   ptr - undo_page);
+#ifdef JS_SPACE
+  uint16_t aft_offset = mach_read_from_2(
+      undo_page + TRX_UNDO_PAGE_HDR + TRX_UNDO_PAGE_FREE);
+
+  ib::warn() << "Before : " << bef_offset  << ", After : " << aft_offset;
+  ib::warn() << "LAST: " << mach_read_from_2(undo_page + TRX_UNDO_SEG_HDR + TRX_UNDO_LAST_LOG);
+  ib::warn() << "HEADER : " << TRX_UNDO_LOG_HDR_SIZE;
+#endif
 
   /* Write to the REDO log about this change in the UNDO log */
 
@@ -2754,11 +2853,17 @@ void trx_undo_get_cvc_info_from_prev_undo(rec_t * rec,
                                              btr_pcur_t* pcur, 
                                              mtr_t* mtr) 
 {
+  /**
+    @jaeseon
+    This function is called in update only.
+    % In lookup, we don't need to get s-latch in purge_sys.
+    */
   ulint flen;
   byte coin = rand() % 2;
   roll_ptr_t rec_roll_ptr;
   trx_id_t rec_trx_id, prev_trx_id;
   rec_roll_ptr = row_get_rec_roll_ptr(rec, index, offsets);
+  bool missing_history;
 
   if (trx_undo_roll_ptr_is_insert(rec_roll_ptr)) {
     // if record is first version
@@ -2768,16 +2873,27 @@ void trx_undo_get_cvc_info_from_prev_undo(rec_t * rec,
     prev_undo_info.vridge_level = VRIDGE_NULL;
   } else {
     // if record is not first version, read undo log contents.
-    trx_undo_get_prev_undo_info(rec_roll_ptr, &prev_trx_id, 
-                                &prev_undo_info);
-    rec_trx_id = trx_read_trx_id(rec_get_nth_field(rec, offsets,
-                                 index->get_sys_col_pos(DATA_TRX_ID),
-                                 &flen));
+    missing_history = check_missing_history(
+            rec_get_trx_id(rec, index), index);
+    
+    if (missing_history) {
+      rec_roll_ptr = VRIDGE_NULL;
+      rec_trx_id = VRIDGE_NULL;
+      prev_undo_info.level = VRIDGE_NULL;
+      prev_undo_info.vridge_level = VRIDGE_NULL;
+    } else {
+      trx_undo_get_prev_undo_info(rec_roll_ptr, &prev_trx_id, &prev_undo_info);
+      rec_trx_id = trx_read_trx_id(rec_get_nth_field(rec, offsets,
+                                 index->get_sys_col_pos(DATA_TRX_ID), &flen));
+
+      rw_lock_s_unlock(&purge_sys->latch);
+    }
   }
 
   if (coin) {
      prev_undo_info.level++;
-     if (!(prev_undo_info.level <= prev_undo_info.vridge_level)) {
+     if (prev_undo_info.level > prev_undo_info.vridge_level) {
+     //if (!(prev_undo_info.level <= prev_undo_info.vridge_level)) {
       if (!(prev_undo_info.vridge_level 
           && trx_get_next_equal_or_higher_level_ridge(index, 
                                            prev_undo_info.level,
@@ -2798,8 +2914,7 @@ void trx_undo_get_cvc_info_from_prev_undo(rec_t * rec,
   prev_undo_info.next_trx_id = trx->id;
   
   ut_ad(pcur->get_rec() == rec);
-  prev_undo_info.k_ridge_roll_ptr =
-    trx_undo_get_k_ridge_in_upd(pcur, mtr, trx, index);
+  trx_undo_get_k_ridge_in_upd(prev_undo_info, pcur, mtr, trx, index);
 }
 
 #endif /* SCSLAB_CVC */
@@ -2846,6 +2961,7 @@ dberr_t trx_undo_report_row_operation(
   dberr_t err = DB_SUCCESS;
 #ifdef SCSLAB_CVC
   cvc_info_cache prev_undo_info;
+  bool missing_history = true;
 #endif /* SCSLAB_CVC */
 
 #ifdef UNIV_DEBUG
@@ -2953,6 +3069,18 @@ dberr_t trx_undo_report_row_operation(
 
   page_no = undo->last_page_no;
 
+#ifdef SCSLAB_CVC 
+  if (op_type == TRX_UNDO_MODIFY_OP &&
+      rec_is_user_record(rec, index)) {
+      missing_history = check_missing_history(
+          prev_undo_info.k_ridge_trx_id, index);
+      if (missing_history) {
+        prev_undo_info.k_ridge_trx_id = 0;
+        prev_undo_info.k_ridge_roll_ptr = 0;
+      }
+  }
+
+#endif
   undo_block = buf_page_get_gen(
       page_id_t(undo->space, page_no), undo->page_size, RW_X_LATCH,
       buf_pool_is_obsolete(undo->withdraw_clock) ? NULL : undo->guess_block,
@@ -2967,6 +3095,8 @@ dberr_t trx_undo_report_row_operation(
     undo_page = buf_block_get_frame(undo_block);
     ut_ad(page_no == undo_block->page.id.page_no());
 
+    ib::warn() << "Undo Id:" << undo->id << ", space:" << undo->space << 
+      ",Page No : " << page_no;
     switch (op_type) {
       case TRX_UNDO_INSERT_OP:
         offset = trx_undo_page_report_insert(undo_page, trx, index, clust_entry,
@@ -3026,7 +3156,11 @@ dberr_t trx_undo_report_row_operation(
       /* Success */
       undo->withdraw_clock = buf_withdraw_clock;
       mtr_commit(&mtr);
-
+#ifdef SCSLAB_CVC
+      if (!missing_history) {
+        rw_lock_s_unlock(&purge_sys->latch);
+      }
+#endif
       undo->empty = FALSE;
       undo->top_page_no = page_no;
       undo->top_offset = offset;
@@ -3047,7 +3181,8 @@ dberr_t trx_undo_report_row_operation(
       if (op_type == TRX_UNDO_MODIFY_OP && rec_is_user_record(rec, index)) {
           roll_ptr_t rec_roll_ptr = row_get_rec_roll_ptr(rec, index, offsets);
           if(!trx_undo_roll_ptr_is_insert(rec_roll_ptr)) {
-            trx_undo_set_next_roll_ptr(rec_roll_ptr, *roll_ptr, &mtr);
+            trx_undo_set_next_roll_ptr(rec_roll_ptr, *roll_ptr,
+                rec_get_trx_id(rec, index), index, &mtr);
           }
        }
 #endif /* SCSLAB_CVC */
@@ -3093,6 +3228,11 @@ dberr_t trx_undo_report_row_operation(
   err = DB_OUT_OF_FILE_SPACE;
 
 err_exit:
+#ifdef SCSLAB_CVC
+      if (!missing_history) {
+        rw_lock_s_unlock(&purge_sys->latch);
+      }
+#endif
   mutex_exit(&trx->undo_mutex);
   mtr_commit(&mtr);
   return (err);
@@ -3234,7 +3374,7 @@ byte* trx_get_undo_rec_following_ridge(
       return NULL;
     }
   }
-
+  
   while (true) {
     if (found_info.vridge_trx_id 
       && !view->changes_visible(found_info.vridge_trx_id,
@@ -3822,6 +3962,10 @@ bool trx_undo_prev_version_build(
   index entries for *old_vers can be constructed without
   dereferencing any BLOB pointers. */
 
+#ifdef SCSLAB_JS
+  uint64_t start, end;
+  start = js_get_time();
+#endif
   ptr = trx_undo_rec_skip_row_ref(ptr, index);
 
   ptr = trx_undo_update_rec_get_update(ptr, index, type, trx_id, roll_ptr,
@@ -3939,6 +4083,12 @@ bool trx_undo_prev_version_build(
   if (update != nullptr) {
     update->reset();
   }
+
+#ifdef SCSLAB_JS
+  end = js_get_time();
+  if(index_mtr)
+    index_mtr->delta_build += end - start;
+#endif
 
   return true;
 }

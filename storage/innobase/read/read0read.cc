@@ -699,6 +699,32 @@ ulint MVCC::size() const {
   return (size);
 }
 
+#ifdef SCSLAB_CVC
+trx_id_t MVCC::get_latest_view_max_trx_id() {
+
+  trx_sys_mutex_enter();
+  const ReadView* view = NULL;
+  trx_id_t return_trx_id;
+
+  for (view = UT_LIST_GET_FIRST(m_views); view != NULL;
+      view = UT_LIST_GET_NEXT(m_view_list, view)) {
+    if (!view->is_closed())
+      break;
+  }
+
+  if (view == NULL)
+    return_trx_id = 0;
+  else
+    return_trx_id = view->low_limit_id();
+  trx_sys_mutex_exit();
+  /** The read should not see any transaction with trx id >= this
+  value. In other words, this is the "high water mark". */
+  return return_trx_id;
+}
+
+#endif
+
+
 /**
 Close a view created by the above function.
 @param view		view allocated by trx_open.

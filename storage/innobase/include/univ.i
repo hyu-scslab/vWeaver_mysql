@@ -45,6 +45,15 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include "hb_univ.i"
 #endif /* UNIV_HOTBACKUP */
 
+#ifndef JS_SPACE
+#define JS_SPACE
+#endif
+
+#ifndef SCSLAB_CVC
+#define SCSLAB_CVC
+#define JAESEON
+#endif
+
 /* aux macros to convert M into "123" (string) if M is defined like
 #define M 123 */
 #define _IB_TO_STR(s) #s

@@ -1647,6 +1647,7 @@ static void trx_flush_log_if_needed(lsn_t lsn, /*!< in: lsn up to which logs are
 {
   trx->op_info = "flushing log";
 
+
   DEBUG_SYNC_C("trx_flush_log_if_needed");
 
   if (trx->ddl_operation || trx->ddl_must_flush) {
@@ -1945,6 +1946,20 @@ written */
     srv_active_wake_master_thread();
   }
 
+#ifdef SCSLAB_JS
+  if (trx->delta_total_latency != 0) {
+    char buf1[300];
+    char buf2[300];
+    uint64_t delta1 = trx->delta_total_latency;
+    uint64_t delta2 = trx->delta_build_latency;
+    sprintf(buf1, "%10lu.%03lu", delta1/1000, delta1%1000);
+    sprintf(buf2, "%10lu.%03lu", delta2/1000, delta2%1000);
+    std::string temp1(buf1);
+    std::string temp2(buf2);
+    ib::warn() << "[TOTAL] : " << temp1 << " [BUILD] : " << 
+      temp2 << "\n";
+  }
+#endif
   /* Free all savepoints, starting from the first. */
   trx_named_savept_t *savep = UT_LIST_GET_FIRST(trx->trx_savepoints);
 

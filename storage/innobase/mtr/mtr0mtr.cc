@@ -885,4 +885,15 @@ void mtr_t::wait_for_flush() {
 }
 
 #endif /* UNIV_DEBUG */
+
+#if !defined(UNIV_DEBUG) && defined(SCSLAB_CVC)
+/** Check if memo contains the given item.
+@return	true if contains */
+bool mtr_t::memo_contains(mtr_buf_t *memo, const void *object, ulint type) {
+  Find find(object, type);
+  Iterate<Find> iterator(find);
+
+  return (!memo->for_each_block_in_reverse(iterator));
+}
+#endif /* !UNIV_DEBUG && SCSLAB_CVC */
 #endif /* !UNIV_HOTBACKUP */

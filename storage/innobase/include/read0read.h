@@ -87,7 +87,9 @@ class MVCC {
 
     return (view != NULL && !(intptr_t(view) & 0x1));
   }
-
+#ifdef SCSLAB_CVC
+  trx_id_t get_latest_view_max_trx_id();
+#endif
   /**
   Set the view creator transaction id. Note: This shouldbe set only
   for views created by RW transactions. */

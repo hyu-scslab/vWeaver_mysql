@@ -1438,6 +1438,7 @@ dberr_t row_vers_build_for_consistent_read(
 
     /* Follow version ridge. A version that should be seen is contained
        in prev_version */
+
     bool purge_sees =
         trx_undo_prev_version_build_in_vridge(rec, mtr, version, index, 
                                               *offsets, &heap, &prev_version, 
@@ -1506,11 +1507,18 @@ dberr_t row_vers_build_for_consistent_read(
 
     /* If purge can't see the record then we can't rely on
        the UNDO log record. */
-
+#ifdef SCSLAB_JS
+    uint64_t start, end;
+    start = js_get_time();
+#endif
     bool purge_sees =
         trx_undo_prev_version_build(rec, mtr, version, index, *offsets, heap,
                                     &prev_version, NULL, vrow, 0, lob_undo);
-
+#ifdef SCSLAB_JS 
+    end = js_get_time();
+    if(mtr)
+      mtr->delta_total += end - start;
+#endif 
     err = (purge_sees) ? DB_SUCCESS : DB_MISSING_HISTORY;
 
     if (prev_heap != NULL) {

@@ -184,6 +184,9 @@ typedef struct __cvc_info_cache__
   trx_id_t next_trx_id;         /* next transaction id */
   roll_ptr_t k_ridge_roll_ptr;	/* kridge rollback pointer */
 
+  // in-memory object
+  trx_id_t k_ridge_trx_id;
+
 } cvc_info_cache;
 
 #endif /* SCSLAB_CVC */

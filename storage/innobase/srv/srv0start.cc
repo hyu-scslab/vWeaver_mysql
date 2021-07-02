@@ -3035,12 +3035,7 @@ void srv_start_threads_after_ddl_recovery() {
 
   /* Now the InnoDB Metadata and file system should be consistent.
   Start the Purge thread */
-#ifdef SCSLAB_CVC
-  /* Turn off purge thread */
-  //srv_start_purge_threads();
-#else
   srv_start_purge_threads();
-#endif
 }
 
 #if 0

@@ -112,6 +112,14 @@ savepoint. */
   (m)->memo_contains_page_flagged((p), (t))
 #endif /* UNIV_DEBUG */
 
+#if !defined(UNIV_DEBUG) && defined(SCSLAB_CVC)
+
+/** Check if memo contains the given item.
+@return	true if contains */
+#define mtr_memo_contains(m, o, t) (m)->memo_contains((m)->get_memo(), (o), (t))
+
+#endif /* !UNIV_DEBUG && SCSLAB */
+
 /** Print info of an mtr handle. */
 #define mtr_print(m) (m)->print()
 
@@ -432,7 +440,26 @@ struct mtr_t {
 
   void wait_for_flush();
 #endif /* UNIV_DEBUG */
+#if !defined(UNIV_DEBUG) && defined(SCSLAB_CVC)
+  /** Check if memo contains the given item.
+  @param memo	memo stack
+  @param object	object to search
+  @param type	type of object
+  @return	true if contains */
+  static bool memo_contains(mtr_buf_t *memo, const void *object, ulint type)
+      MY_ATTRIBUTE((warn_unused_result));
 
+  /** @return the memo stack */
+  const mtr_buf_t *get_memo() const MY_ATTRIBUTE((warn_unused_result)) {
+    return (&m_impl.m_memo);
+  }
+
+  /** @return the memo stack */
+  mtr_buf_t *get_memo() MY_ATTRIBUTE((warn_unused_result)) {
+    return (&m_impl.m_memo);
+  }
+
+#endif /* !UNIV_DEBUG && SCSLAB_CVC */
   /** @return true if a record was added to the mini-transaction */
   bool is_dirty() const MY_ATTRIBUTE((warn_unused_result)) {
     return (m_impl.m_made_dirty);
@@ -468,6 +495,10 @@ struct mtr_t {
   static bool is_block_dirtied(const buf_block_t *block)
       MY_ATTRIBUTE((warn_unused_result));
 
+#ifdef SCSLAB_JS
+  uint64_t delta_total{0};
+  uint64_t delta_build{0};
+#endif 
  private:
   Impl m_impl;
 

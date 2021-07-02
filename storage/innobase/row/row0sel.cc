@@ -5467,11 +5467,19 @@ rec_loop:
           !lock_clust_rec_cons_read_sees(rec, index, offsets,
                                          trx_get_read_view(trx))) {
         rec_t *old_vers;
+#ifdef SCSLAB_JS
+        mtr.delta_total = 0;
+        mtr.delta_build = 0;
+#endif
         /* The following call returns 'offsets' associated with 'old_vers' */
         err = row_sel_build_prev_vers_for_mysql(
             trx->read_view, clust_index, prebuilt, rec, &offsets, &heap,
             &old_vers, need_vrow ? &vrow : NULL, &mtr,
             prebuilt->get_lob_undo());
+#ifdef SCSLAB_JS
+        trx->delta_total_latency += mtr.delta_total;
+        trx->delta_build_latency += mtr.delta_build;
+#endif
 #ifdef SCSLAB_CVC
         if (cvc_old_vers_heap) {
           mem_heap_free(cvc_old_vers_heap);

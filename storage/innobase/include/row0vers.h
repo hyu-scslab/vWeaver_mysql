@@ -114,7 +114,6 @@ dberr_t row_vers_build_for_consistent_read(
     rec_t **old_vers, const dtuple_t **vrow, lob::undo_vers_t *lob_undo);
 
 #ifdef SCSLAB_CVC
-// XXX: JAESEON: There are four calling parts. Not sure.
 dberr_t row_vers_build_for_consistent_read_cvc(
     const rec_t *rec, mtr_t *mtr, dict_index_t *index, ulint **offsets,
     ReadView *view, mem_heap_t **offset_heap, mem_heap_t *in_heap,

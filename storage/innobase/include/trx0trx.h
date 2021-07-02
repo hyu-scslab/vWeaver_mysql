@@ -1210,6 +1210,11 @@ struct trx_t {
   }
 
   bool allow_semi_consistent() const { return (skip_gap_locks()); }
+
+#ifdef SCSLAB_JS
+  uint64_t delta_total_latency{0};
+  uint64_t delta_build_latency{0};
+#endif
 };
 #ifndef UNIV_HOTBACKUP
 

@@ -45,6 +45,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include "gis0rtree.h"
 #endif /* UNIV_HOTBACKUP */
 
+#include "mtr0types.h"
 /** Relative positions for a stored cursor position */
 enum btr_pcur_pos_t {
   BTR_PCUR_UNSET = 0,
@@ -1045,35 +1046,58 @@ inline dberr_t btr_pcur_t::get_next_user_rec(
   auto next_page = cur_page;
   auto next_block = cur_block;
 
+  ulint mode;
+  bool current_flag = false;
+  bool next_flag = false;
   page_no_t next_page_no;
-
+  
   for (;;) {
     
     if (page_rec_is_supremum(cur_rec)) {
 
       if (btr_page_get_next(cur_page, mtr) == FIL_NULL 
                         && page_rec_is_supremum(cur_rec)) {
-        if (cur_page != get_page()) {
+        if (cur_page != get_page() && current_flag) {
           btr_leaf_page_release(cur_block, BTR_SEARCH_LEAF, mtr);
         }
         return (DB_END_OF_INDEX);
       }
     
       next_page_no = btr_page_get_next(cur_page, mtr);
+      mode = BTR_NO_LATCHES;
+
+      current_flag = next_flag;
+
       next_block =
         btr_block_get(
             page_id_t(cur_block->page.id.space(), next_page_no),
-            cur_block->page.size, BTR_SEARCH_LEAF, get_btr_cur()->index, mtr);
+            cur_block->page.size, mode, get_btr_cur()->index, mtr);
+
+      if (mtr_memo_contains(mtr, next_block, MTR_MEMO_PAGE_S_FIX) || 
+            mtr_memo_contains(mtr, next_block, MTR_MEMO_PAGE_X_FIX)) {
+        next_flag = false;
+      } else {
+        mode = BTR_SEARCH_LEAF;
+        next_block =
+          btr_block_get(
+              page_id_t(cur_block->page.id.space(), next_page_no),
+              cur_block->page.size, mode, get_btr_cur()->index, mtr);
+        next_flag = true;
+      }
+
       next_page = buf_block_get_frame(next_block);
     
       /* Release current page latch if it is not the page *pointed by cursor* */
-      if (cur_page != get_page()) {
+      if (cur_page != get_page() && current_flag) {
         btr_leaf_page_release(cur_block, BTR_SEARCH_LEAF, mtr);
       }
     
       cur_page = next_page;
       cur_block = next_block;
       cur_rec = page_get_infimum_rec(buf_block_get_frame(cur_block));
+
+      current_flag = next_flag;
+
     } else {
       cur_rec = page_rec_get_next(cur_rec);
     }
@@ -1082,7 +1106,7 @@ inline dberr_t btr_pcur_t::get_next_user_rec(
       ret_rec = cur_rec;
       
       /* Set return block to current block to release page latch */
-      if (cur_page != get_page()) {
+      if (cur_page != get_page() && current_flag) {
         ret_block = cur_block;
       }
       return (DB_SUCCESS);
